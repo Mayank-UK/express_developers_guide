@@ -1,0 +1,47 @@
+# Ingress: one entry point, two backends (networking basics topic: reverse
+# proxies / load balancers — the k8s shape of the client nginx's proxy job).
+# /api and /docs go to the server (the docs split is deliberate: app.ts mounts
+# Swagger UI at /docs on the ROOT app, beside /api), everything else to the
+# client. Requires the ingress-nginx controller (ingressClassName: nginx).
+# Host matches the guide's deployment topic example, guide.example.test.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: express-guide
+  namespace: express-guide
+  labels:
+    app.kubernetes.io/part-of: express-guide
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: guide.example.test
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: server
+                port:
+                  number: 4000
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: server
+                port:
+                  number: 4000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: client
+                port:
+                  number: 80
+  # TLS: uncomment once a certificate exists. The placeholder secret name
+  # stands in for a cert-manager-issued or ops-provided TLS secret — real
+  # certificates and keys are never committed to git.
+  # tls:
+  #   - hosts:
+  #       - guide.example.test
+  #     secretName: express-guide-tls

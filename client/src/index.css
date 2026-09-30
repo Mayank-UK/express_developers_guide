@@ -1,0 +1,114 @@
+@import 'tailwindcss';
+
+@import './ui/design-system/tokens.css';
+
+/*
+ * Expose the runtime CSS-variable tokens to Tailwind as utilities
+ * (bg-primary, text-on-surface, shadow-button-card, rounded-md, etc.).
+ * `@theme inline` emits `var(--token)` references so utilities respond to the
+ * light/dark [data-theme] override at runtime.
+ */
+@theme inline {
+    --color-primary: var(--color-primary);
+    --color-primary-container: var(--color-primary-container);
+    --color-secondary: var(--color-secondary);
+    --color-secondary-container: var(--color-secondary-container);
+    --color-surface: var(--color-surface);
+    --color-surface-tint: var(--color-surface-tint);
+    --color-surface-variant: var(--color-surface-variant);
+    --color-error: var(--color-error);
+    --color-on-primary: var(--color-on-primary);
+    --color-on-secondary: var(--color-on-secondary);
+    --color-on-surface: var(--color-on-surface);
+    --color-on-surface-variant: var(--color-on-surface-variant);
+    --color-on-error: var(--color-on-error);
+    --color-outline: var(--color-outline);
+    --color-info: var(--color-info);
+    --color-warning: var(--color-warning);
+    --color-critical: var(--color-critical);
+
+    --font-display: var(--font-display);
+    --font-body: var(--font-body);
+    --font-mono: var(--font-mono);
+
+    /* --- type scale (drives text-* size utilities: text-body, text-caption, ...) ---
+     * Every --text-* entry here generates a matching text-* utility, so font-size
+     * tokens are first-class — write `text-caption`, never `text-[var(--text-caption)]`.
+     * (Default Tailwind text sizes — xs/sm/base/lg — remain available alongside.) */
+    --text-display-lg: var(--text-display-lg);
+    --text-display-md: var(--text-display-md);
+    --text-display-sm: var(--text-display-sm);
+    --text-headline: var(--text-headline);
+    --text-title-lg: var(--text-title-lg);
+    --text-title: var(--text-title);
+    --text-title-sm: var(--text-title-sm);
+    --text-body: var(--text-body);
+    --text-body-sm: var(--text-body-sm);
+    --text-caption: var(--text-caption);
+    --text-overline: var(--text-overline);
+
+    --radius-sm: var(--radius-sm);
+    --radius-md: var(--radius-md);
+    --radius-lg: var(--radius-lg);
+    --radius-pill: var(--radius-pill);
+
+    --shadow-button-card: var(--shadow-button-card);
+    --shadow-button-card-hover: var(--shadow-button-card-hover);
+    --shadow-modal: var(--shadow-modal);
+
+    /* --- spacing scale (drives p-*, m-*, gap-*, w-*, h-*, etc.) --- */
+    --spacing-xxs: var(--space-xxs);
+    --spacing-xs: var(--space-xs);
+    --spacing-sm: var(--space-sm);
+    --spacing-md: var(--space-md);
+    --spacing-lg: var(--space-lg);
+    --spacing-xl: var(--space-xl);
+    --spacing-xxl: var(--space-xxl);
+
+    /* --- layout (max-w-content reads --content-max-width) --- */
+    --container-content: var(--content-max-width);
+}
+
+/*
+ * Named layout utility for the fixed header height. Height has no first-class
+ * custom-token namespace in Tailwind v4 (it draws from the spacing scale), so a
+ * one-line @utility keeps the token first-class — write `h-header`, not
+ * `h-[var(--header-height)]`.
+ */
+@utility h-header {
+    height: var(--header-height);
+}
+
+/*
+ * Attribute-driven dark mode, matching tokens.css's [data-theme='dark']
+ * override (Tailwind's default `dark:` is media-query based). Enables token
+ * classes like `dark:bg-surface-variant` wherever a component must deviate
+ * between themes.
+ */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+    color-scheme: light;
+}
+
+[data-theme='dark'] {
+    color-scheme: dark;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-body);
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+    -webkit-font-smoothing: antialiased;
+}
+
+* {
+    box-sizing: border-box;
+}

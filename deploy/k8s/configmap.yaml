@@ -1,0 +1,20 @@
+# Non-secret configuration for the server (environments topic: 12-factor config).
+# Mirrors server/.env.production — the same validated keys app_config.ts reads
+# (PORT, LOG_LEVEL, SQLITE_PATH). MONGO_URI / REDIS_URL are deliberately unset:
+# the optional-service pattern means ''/missing = feature off, app still boots.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: express-guide-config
+  namespace: express-guide
+  labels:
+    app.kubernetes.io/part-of: express-guide
+data:
+  NODE_ENV: "production"
+  PORT: "4000"
+  LOG_LEVEL: "info"
+  SQLITE_PATH: "data/guide.db"
+  # To switch a demo on, point it at an in-cluster service and keep the
+  # credentials (if any) in a Secret — never here:
+  # MONGO_URI: "mongodb://mongo.express-guide.svc.cluster.local:27017/express_guide"
+  # REDIS_URL: "redis://redis.express-guide.svc.cluster.local:6379"

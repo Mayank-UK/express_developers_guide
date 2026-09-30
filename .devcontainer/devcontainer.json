@@ -1,0 +1,49 @@
+// VS Code devcontainer — the primary way to develop this repo. Docker layer:
+// ../.docker/docker-compose.yml (the existing dev stack) + docker-compose.extend.yml
+// (adds the `dev` service this container lives in).
+{
+  "name": "Express Developers Guide",
+  "dockerComposeFile": ["../.docker/docker-compose.yml", "docker-compose.extend.yml"],
+  "service": "dev",
+  // The full stack starts with the container: server/client run as their own
+  // containers with the dev servers inside (ecommerce-style — hot-reload via
+  // bind mounts, ports published to the host), alongside redis/mongo. `dev`
+  // is only the VS Code tooling container: editor, tests, git, builds.
+  "runServices": ["dev", "server", "client", "redis", "mongo"],
+  // The override bind-mounts the repo root at exactly this folder, so no
+  // workspaceMount is needed: VS Code simply opens workspaceFolder.
+  "workspaceFolder": "/workspaces/express_developers_guide",
+  // node:22-bookworm's built-in non-root user. Docker Desktop's bind mounts
+  // are permissive, so it can write the repo; the override chowns the two
+  // anonymous node_modules volumes at boot (the image has no sudo).
+  "remoteUser": "node",
+  "features": {
+    // Docker-outside-of-docker: mounts the host Docker socket + installs the
+    // docker CLI and docker-compose v2 in this container, so compose can be
+    // driven from a dev terminal (inspect/stop services, manual runs).
+    // Socket access is host-equivalent — acceptable for a single-user dev Mac.
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      // Nothing required for TypeScript (built-in TS server resolves the
+      // container-installed node_modules). Docker pane is handy for watching
+      // the dev stack.
+      "extensions": ["ms-azuretools.vscode-docker"]
+    }
+  },
+  // Only 9229 node --inspect · 50051 gRPC: 4000/5173 are published directly
+  // by the server/client containers, and VS Code forwarding would collide
+  // with those host ports. These two remain for the optional manual path —
+  // stop the server container, run `npm run dev` in a dev terminal, and the
+  // debugger/gRPC ports are reachable.
+  "forwardPorts": [9229, 50051],
+  "portsAttributes": {
+    "9229": { "label": "Node debugger (--inspect)", "onAutoForward": "silent" }
+  },
+  // Lockfiles exist for both packages, so `npm ci` installs exactly those.
+  // Fallback note: if a fresh-resolution arborist crash ever appears (seen
+  // once on this repo under npm 10), the documented out is `npx npm@12 install`.
+  "postCreateCommand": "bash -c \"cd server && npm ci && cd ../client && npm ci\"",
+  "postStartCommand": "echo 'Dev container ready — full stack is up: API at http://localhost:4000 · app at http://localhost:5173 (both published by their containers), Redis + Mongo running. Integrated terminals are for tests (cd server && npm test · cd client && npm test), git, and builds. To debug the API in a terminal instead, stop the server container first.'"
+}

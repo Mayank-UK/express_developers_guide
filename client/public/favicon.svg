@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <title>Express Developers Guide</title>
+  <!-- indigo app-icon tile (the guide's primary) with a white server-stack glyph -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#4f46e5" />
+  <g stroke="#ffffff" stroke-width="2.6" fill="none">
+    <rect x="16" y="15" width="32" height="14" rx="4" />
+    <rect x="16" y="35" width="32" height="14" rx="4" />
+    <path d="M32 29v6" />
+  </g>
+  <circle cx="23" cy="22" r="2.4" fill="#ffffff" />
+  <circle cx="23" cy="42" r="2.4" fill="#ffffff" />
+</svg>

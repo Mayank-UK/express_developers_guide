@@ -1,0 +1,8 @@
+# One namespace for the whole guide stack (deployment topic: from compose to k8s).
+# Everything below lives here — the k8s answer to the compose project name.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: express-guide
+  labels:
+    app.kubernetes.io/part-of: express-guide

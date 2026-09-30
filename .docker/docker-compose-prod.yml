@@ -1,0 +1,45 @@
+services:
+  server:
+    build:
+      context: ./../
+      dockerfile: ./.docker/server/Dockerfile.prod
+    image: express_guide_server_prod
+    container_name: express_developers_guide_server_prod
+    restart: unless-stopped
+    ports:
+      - 4000:4000
+    env_file:
+      - ./../server/.env.production
+    networks:
+      - frontend
+      - backend
+
+  client:
+    build:
+      context: ./../
+      dockerfile: ./.docker/client/Dockerfile.prod
+    image: express_guide_client_prod
+    container_name: express_developers_guide_client_prod
+    restart: unless-stopped
+    ports:
+      - 8080:80
+    networks:
+      - frontend
+    depends_on:
+      - server
+
+  redis:
+    image: redis:7-alpine
+    container_name: express_developers_guide_redis_prod
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  redis_data:

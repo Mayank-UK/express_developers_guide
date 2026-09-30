@@ -1,0 +1,21 @@
+# Stable in-cluster address for the server pods (networking basics topic).
+# Named `server` ON PURPOSE: the client image's baked nginx config proxies
+# /api/ to http://server:4000 (compose service name) — this Service keeps that
+# same-namespace DNS name valid in k8s without rebuilding the client image.
+apiVersion: v1
+kind: Service
+metadata:
+  name: server
+  namespace: express-guide
+  labels:
+    app.kubernetes.io/name: server
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: express-guide
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: server
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http

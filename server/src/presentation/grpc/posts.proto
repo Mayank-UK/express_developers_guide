@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+// The guide's one and only gRPC contract: three unary rpcs over the SAME
+// PostsUseCase the REST and GraphQL surfaces call. The package name carries
+// the API identity plus a version (guide.v1) so a future breaking contract
+// can live beside this one as guide.v2 without disturbing v1 clients.
+
+package guide.v1;
+
+// A post as it crosses the wire. The field NUMBERS are the contract; the
+// names are documentation. Never renumber a field and never reuse the number
+// of a field you removed — that is the whole compatibility story of proto3.
+message PostMessage {
+  string id = 1;
+  string title = 2;
+  string body = 3;
+  string author = 4;
+  string created_at = 5;  // ISO 8601 string; a bigger schema would use Timestamp
+  string updated_at = 6;
+}
+
+// Empty request messages are idiomatic: "list everything" takes no arguments,
+// and an empty message leaves room to add optional filters later.
+message ListPostsRequest {}
+
+message PostsList {
+  repeated PostMessage posts = 1;
+}
+
+message GetPostRequest {
+  string id = 1;
+}
+
+message CreatePostInput {
+  string title = 1;
+  string body = 2;
+  string author = 3;
+}
+
+service PostsService {
+  rpc ListPosts (ListPostsRequest) returns (PostsList);
+  rpc GetPost (GetPostRequest) returns (PostMessage);
+  rpc CreatePost (CreatePostInput) returns (PostMessage);
+}

@@ -1,0 +1,105 @@
+# Explicit compose project name: without it, compose derives "docker" from
+# this file's .docker/ parent dir, which shows as a bare "docker" group in
+# Docker Desktop. Also what keeps VS Code's stack and any manual compose
+# invocation in one project.
+name: express_developers_guide
+
+services:
+  server:
+    build:
+      context: ./../
+      dockerfile: ./.docker/server/Dockerfile.dev
+    image: express_guide_server_dev
+    container_name: express_developers_guide_server_dev
+    restart: unless-stopped
+    ports:
+      - 4000:4000
+    volumes:
+      # Live source; the anonymous volume keeps the image-built node_modules.
+      - ./../server:/app
+      - /app/node_modules
+    env_file:
+      - ./../server/.env.development
+    environment:
+      # Inside compose the mongo service is reachable by service name, not
+      # localhost — this overrides the .env.development MONGO_URI. Optional
+      # service: the server boots fine without it (the demo reports off).
+      - MONGO_URI=mongodb://mongo:27017/express_guide_dev
+      # Same rule for redis: service name, not localhost (overrides
+      # .env.development REDIS_URL). Optional service, same graceful off.
+      - REDIS_URL=redis://redis:6379
+    networks:
+      - frontend
+      - backend
+
+  client:
+    build:
+      context: ./../
+      dockerfile: ./.docker/client/Dockerfile.dev
+    image: express_guide_client_dev
+    container_name: express_developers_guide_client_dev
+    restart: unless-stopped
+    ports:
+      - 5173:5173
+    volumes:
+      - ./../client:/app
+      - /app/node_modules
+    environment:
+      # Inside compose the server is reachable by service name, not localhost.
+      - API_PROXY_TARGET=http://server:4000
+    networks:
+      - frontend
+    depends_on:
+      - server
+
+  # Optional service: only the Redis topic uses it (structures tour, TTL demo,
+  # pub/sub). The server never requires it — with the service down the redis
+  # demo degrades to an "off" panel and everything else keeps working.
+  redis:
+    image: redis:7-alpine
+    container_name: express_developers_guide_redis_dev
+    restart: unless-stopped
+    ports:
+      # Published so a host-run server (npm run dev) can reach it at
+      # 127.0.0.1:6379 — the address .env.development points REDIS_URL at.
+      - 6379:6379
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - backend
+
+  # Optional service: only the MongoDB & Mongoose topic uses it. The server
+  # never requires it — with the service down the mongo demo degrades to an
+  # "off" panel and everything else keeps working.
+  mongo:
+    image: mongo:7
+    container_name: express_developers_guide_mongo_dev
+    restart: unless-stopped
+    ports:
+      # Published so a host-run server (npm run dev) can reach it at
+      # 127.0.0.1:27017 — the address .env.development points MONGO_URI at.
+      - 27017:27017
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  redis_data:
+  mongo_data:

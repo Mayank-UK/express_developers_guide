@@ -1,0 +1,204 @@
+# AI defined section:
+
+- Project snapshot
+    - Path: /Users/mak/Development/personal/express/express_developers_guide
+    - Concept: a runnable full-stack reference app that IS the guide. The server (Express 5 + TS) carries 100% of the teaching; the client (React 19 + Vite + TS + Tailwind v4) is a presentation-only shell that renders topic content served by the Express content API and never teaches React (react_developers_guide does that).
+    - Repo shape: monorepo `client/` + `server/` + `e2e/` (host-run Playwright) + `deploy/k8s/` + `.github/workflows/` + `.docker/` + `.devcontainer/`. Ports: server 4000, client 5173 (Vite proxies /api → 4000).
+    - Server layers: `src/{app,server}.ts` + `core/` (config, error_handling, logging incl. trace_context, result, scenario) + `content/` (typed topic registry → sections → blocks, 40 topics) + `domain/<area>/` (entities, ports, use cases; `patterns/` = event store + saga; `teaching/` = snippet-quote exhibits) + `data/<area>/` (repo impls, DAOs, sqlite/redis/mongo/files/messaging/sql_depth) + `di/container.ts` + `presentation/` (middleware, ~45 routes files, grpc).
+    - Client layers (react-guide clean architecture): `core/` (container, Result, config, error-handling) + `domain/` + `data/` + `ui/` (components, demos incl. messaging/, routing, views). View folders/files snake_case; core/domain/data + shared ui kebab-case; `const Foo = {...} as const` (enums forbidden — erasableSyntaxOnly).
+    - Verification (DoD): devcontainer `docker exec express_developers_guide_dev bash -lc 'cd /workspaces/express_developers_guide/server && npm test && npm run build'` (same for client/). Snippet spec must stay 14/14. Host `e2e/` (`npm test` there, needs stack up) is the ONE host-npm exception (devcontainer has no sudo → no Chromium libs; pure-JS package only). Host node_modules of server/client stay EMPTY by design. `docker compose -f .docker/docker-compose*.yml config` when Docker files change; every new demo endpoint needs a Supertest case.
+
+- Invariants (apply to EVERY task — read first)
+    - Snippets quote real code — THE CODE IS THE SOURCE OF TRUTH: every code block in a must-source language (ts/js/json/sql/proto/yaml/nginx/…) carries `source: '<repo-root-relative path>'` and passes `content/snippet_sources.spec.ts` strict verification (ordered subsequence; trailing-// teaching comments + `// …` elisions allowed; RATCHET = 0 — an unsourced code block FAILS the suite). New teaching = write the real implementation first, then quote it; only when no real counterpart exists may a compilable exhibit live in `domain/teaching/` and be quoted. Bash/command/output blocks are exempt. Never relabel a language to dodge the check.
+    - Dependency rule: presentation → domain ← data. Controllers/routes never import the data layer; DTOs never leak past repository implementations. Client mirrors this: ui → domain ← data, container-resolved. (Documented exemption: demo exhibit routers may import data/ directly — teaching exhibits.)
+    - Thin controllers: parse/validate input → call a use case → map Result to an HTTP response. No business logic in routes or controllers.
+    - One error taxonomy end-to-end: typed exceptions → error-handling middleware → failure types → consistent HTTP error envelope. Async errors captured by guards; nothing swallowed; every failure logged with a request ID.
+    - DI at the composition root; fake/live wiring switchable at runtime for demos.
+    - Teaching anatomy per screen: explanation sections → text blocks → code blocks (real running source, sourced) → a VISIBLE live demo hitting real endpoints. No screen ships with only a CodeBlock.
+    - Guide-family consistency: reuse the react guide's design tokens and screen anatomy; when unsure, look at how an existing screen in this app does it.
+    - Backend canon: every topic taught concept-first, then implemented in Express — the tree is reused for the future flask/fastapi/springboot guides.
+
+- Conventions
+    - Client: snake_case view folders; kebab-case core/domain/data and shared ui components/hooks. Server: snake_case throughout (deliberate — see decision log).
+    - Content model: topic → sections → blocks (text | code | demo), typed JSON from server/src/content.
+    - Status markers: ✅ done · 🚧 in progress · ⏳ pending.
+
+- Current state (2026-09-30)
+    - Baseline: server 855 passed | 22 skipped (68 files), build clean; coverage tooling live (`npm run test:coverage`, thresholds 86/77/87/87, CI-gated); client 367 passed (69 files), build clean; snippet spec 14/14 @ RATCHET 0; host e2e 3 specs green; 40 topics / 57 demo ids all wired; count guards assert 40 (registry.spec, content_routes id contract). Ambient-load flakes possible under high loadavg (re-run before judging red; files_workbench range spec is the usual suspect — misses at loadavg ≥10, raised twice already).
+    - Coverage-gap program COMPLETE (2026-09-30, details devlog.md): 2 new topics (messaging, advanced-architecture — platform-last per canon "after the capstone"); 12 topics strengthened (sql_node ×5 sections, sql_schema ×2, mongodb NoSQL survey, authentication hashing+refresh, security PII/GDPR, reliability races, observability tracing, deployment k8s+rollouts+IaC+Linux, best_practices git, api_design tRPC, performance checklist prose, express-fundamentals 4→10 and node-js 7→11 sections in the fundamentals-deepening pass — the two thinnest topics were at 50/56% of the ~3k-word guide median, now both ~3k; registry.spec sectionCount tracks express-fundamentals=10); 13 new demos (db:sql-lab|search|race|uuid|audit, msg:stream|outbox, arch:eventstore|saga, auth:hashing|refresh, obs:trace, security:pii); all 243 legacy snippets retrofitted with sources; real artifacts .github/workflows/ci.yml + deploy/k8s/ (9 manifests); host-run Playwright e2e/. Data engineering declared OUT OF SCOPE (guide = backend web engineering; developer endorsed by not objecting).
+    - Devcontainer is the ONLY dev path. Stack = `dev` (tooling) + `server` + `client` + `redis` + `mongo`; "Reopen in Container" starts everything. Gotchas (load-bearing): NODE_ENV must stay UNSET in the dev service; fresh anon volumes root-owned → chown+setpriv bootstrap; scripts in shared package.json run in EVERY container; oauth router's router-scoped urlencoded parser parses urlencoded bodies for every LATER-mounted router (patterns specs use JSON arrays for non-object cases); node scrypt THROWS on N=2^15,r=8 with default maxmem → password_hasher passes explicit maxmem 64MB; ioredis XPENDING per-consumer counts arrive as STRINGS (Number() them). Full history: devlog.md.
+    - Server architecture = merlino-conformant (controllers layer + make_express_callback + make* frozen factories on posts/content slices; 11 exhibit routers keep direct data/ imports by documented exemption — each now carries the explicit teaching-exception marker). Client = react-guide clean architecture with server content registry as single topic-id source; demos (57) fetch directly — teaching widgets. Theme DARK default, key 'edg-theme'.
+    - Live-redis note: messaging specs default to 503-degradation + pure-sqlite paths; full live proofs run per-file with REDIS_TEST_URI=redis://redis:6379 (stream keys share the guide:demo: FLUSH-unsafe namespace with the redis tour).
+
+- Decision log (compressed decisions + why)
+    - React client presentation-only; monorepo modeled on ecommerce_website; Docker is both dev infrastructure and deployment curriculum; SQLite primary + Redis/Mongo compose services; topic list = backend canon (flask/fastapi/springboot will reuse); TypeScript everywhere. (2026-09-28)
+    - Skeleton deviations approved: pino-pretty devDep; unified react-router ^8; Vite proxy overridable via API_PROXY_TARGET; vitest include limited to src/**; app_config maps NODE_ENV=test → development; lockfiles via npm@12. (2026-09-28)
+    - requestId real (middleware-first, UUID + x-request-id header); error envelope merges failure details flat, canonical keys win; container exposes live scenarioStore with resetContainer(). (2026-09-28)
+    - Client: tokens.css + `@custom-variant dark` keyed to `[data-theme='dark']`; TopicView is the generic renderer; DemoHost lazy-loads via demo_registry (code-split); unknown topic/demoId degrade friendly, never crash. (2026-09-28/29)
+    - Client clean-architecture layers ported from react guide (2026-09-29): container+Result+error pipeline in core/, content/status pipelines in domain/+data/, api/ deleted. No client failure-injection store (no fake mode).
+    - Theme default DARK (user review, 2026-09-29) — deliberate divergence from react guide; storage key 'edg-theme'. Server content registry is the single topic-id source.
+    - Server merlino 10/10 plan (2026-09-29): controllers layer + make_express_callback + make* frozen factories on canonical slices; PRESERVE typed taxonomy/Result/requestId/scenario/central composition root; REJECT kebab rename, distributed barrels, blanket-400, success-wrapping. Details: devlog.md.
+    - SQL-depth exhibits (2026-09-29): migration dir is SHARED state — specs asserting exact migration lists must track it (8 files now); exhibits answer 200 for observed failures (oversell, guarded 409, crash rollback); inventory has NO stock>=0 CHECK by design; posts seed stays in TS (SEED_POSTS SSoT), staff dataset is migration-owned.
+    - Messaging/patterns exhibits (2026-09-29): saga steps ride 'email' jobs on a DEDICATED JobQueue instance; compensate only on the queue's FINAL dead-letter verdict; event-store empty stream = -1; overdraft refusal = 409 + withdrawal-rejected event, optimistic conflict = 409 without event; relay crash = 200 observation, not a thrown 500.
+    - Gap-filling choices (2026-09-30): snippet drift-check = ordered-subsequence matcher with comment-strip + elision gaps, ratchet mechanics (never raise) — code is the source of truth per developer rule; password hashing = node:crypto scrypt (zero new deps, version-prefixed format for rehash upgrades; argon2id/bcrypt named in prose) — not bcryptjs; refresh tokens = opaque, SHA-256-at-rest, family-based rotation + reuse-detection revoke; tracing = hand-rolled W3C traceparent + span ring (real middleware, job propagation), OTel SDK taught prose-only (no fabricated SDK snippets); PII erasure = crypto-shred keeping rows/FKs + erasure log; messaging = real Redis Streams (XADD/groups/XPENDING/XAUTOCLAIM/DLQ) + outbox-in-same-tx, Kafka/RabbitMQ/SQS taught by comparison; k8s/CI = real files quoted (deploy/k8s/, .github/workflows/ci.yml), no fake YAML; e2e = host-run Playwright package (devcontainer no-sudo exception); teaching exhibits allowed under domain/teaching/ ONLY when no real counterpart exists.
+    - Data-layer hardening (2026-09-30): mongo failed-connect catch DESTROYS the half-open connection (`connection.destroy(true)` — destroy not close: never-reopen semantics, mirrors redis twin's catch-path disconnect); FileStore internal records frozen + every read (list/get/register) returns defensive copies (variants copied one level deep), overwriteOriginal RETURNS the derived size instead of mutating — ingest builds the complete record and registers once; `guide:demo:` namespace owned INSIDE redis_playground (setWithTtl/inspectTtl apply toDemoKey internally, results report the namespaced key; routes pass bare keys — no route-side prefixing to forget); files-media ingest snippet re-quoted to match.
+    - Server 10/10 hardening program (2026-09-30, review-driven — full record devlog.md): crash paths fixed (mid-stream file-read errors destroy the socket instead of killing the process; errorHandler headersSent → delegates next(err); JobQueue drain try/finally — a thrown handler can't wedge the lock); shutdown now drains outbox + primary sqlite too; outbox relay single-flight; login endpoints rate-limited 30/60s (test seam resetAuthLoginRateLimiter). Domain purity: ContentService/EmailService receive ports (container = only nodemailer importer), identity_resolver express-free (IdentitySource), saga injectable clock/queue + orderId validation, parseRangeHeader → core/http/range_header.ts (zero domain→presentation imports). Entities own invariants: post.ts validatePostDraft (CreatePostInput = PostDraft SSoT), document_store patch caps (title ≤120 chars, body ≤64KiB, all-or-nothing, unknown keys rejected). Hygiene: ioredis classification ×4→data/redis/error_classification.ts, root body limit pinned 100kb, pii crypto-shred → domain/demo/pii_erasure_service.ts, jwt JwtClock injectable, src/test_support dedup (UUID_RE ×24, FakeTimerHost ×3), posts spec shuffle-proof; new specs: error-middleware table, app_config, migration_runner, container wiring matrix, 6 middleware specs; @vitest/coverage-v8 CI-gated. Tests 703→855.
+
+# Developer defined section
+
+- Project requirements
+    - I want to implement an express project that will have react as frontend and express in backend. React will follow the code architecture similar to Development/personal/react/react_developers_guide, separating ui, domain, data layer, error handling, state management, etc while express will follow the architecture as taught here "https://merlino.agency/blog/clean-architecture-in-express-js-applications"
+    - Prepare your internal instruction set from the above for every detail you require and add it in this file in "AI defined section", make sure you follow same structure of arranging information as "Developer defined section" and not randomly putting text as you wish, so you don't have to read the reference project again and again, if you ever feel confused on any step feel free to go and read the above project to clear even your smallest confusion like how files are named, structured, etc
+    - I will add my requirements to this file marked as "⏳" and you will keep finishing them and marking them "✅" on completion
+
+- Generic instructions:
+    - You have to build UI using the design system implemented in the application
+    - You have to follow the proper architecture that is followed in the application, for example, having use cases, repositories, repositoriesImpl, remote, DTOs, local, DAOs, exception handling, and so on
+    - You have to check if existing components can be reused instead of creating new ones. If a component is to be used in a single file, then better to make it a function inside that view. If a component is to be used in multiple files, then create it inside the global ui/components
+    - If feeling confused about how to do things, you are free to check how it's done in other parts of this app; the goal is to maintain consistency throughout the app
+    - You have to follow few principles to write quality code:
+        - Core programming principles:
+            - DRY, KISS, YAGNI, SOLID, Separation of concerns, Single source of truth
+        - Object oriented design if required
+            - Encapsulation, Abstraction, Inheritance, Polymorphism, Composition over inheritance, Command query separation, Law of Demeter, Dependency Injection, Inversion of control, High cohesion, Low coupling
+        - Software design
+            - Modularity, Maintainability, Readibility, Extensibility, Defensive programming (input is hostile), Immutability, Pure functions, Referential Transparency, Composition, Lazy evaluation
+        - Code quality
+            - Self documenting (descriptive naming), Consistent formatting, Error handling
+        - Concurrency
+            - Thread safety, Synchronization, Immutability
+        - Security
+            - Least priviledge, Input validation, Secret management
+        - Testing
+            - Unit tests, Integration tests, Test behaviour not implementation
+        - Refactoring
+            - Incremental refactoring, remove duplication
+        - Engeneering principles
+            - Unix philosophy (composable tools beat monoliths)
+        - Performance
+            - Right algorithms, Right datastructures, Caching, Batching
+    - Keep "agentic_development.md" for this project as lean as possible without compromising it's primary purpose to high quality consistent development, optimize token efficiency and seemless development across sessions. Remove the information inside the "AI defined section" that is no longer relevant and will not be usefull in future to save tokens
+
+- Changes requested based on review:
+    - I don't want a drawer, I want it similar to how react_developers_guide to it, arranged on home ✅
+    - The want links similar to react_developers_guide, how it kindof shows in grid, and in mobile viewport it occupies full width ✅
+    - There is no option to collapse a code section, by default it should be collapsed as in react_developers_guide ✅
+    - About section and dark/night mode switch should be in header like react_developers_guide, with dark mode by default ✅
+    - I want the client section to follow same coding style and architecture, arrangement of files like react_developers_guide, it's following clean architecture ✅
+    - I want server section to follow the same architecture as taught here "https://merlino.agency/blog/clean-architecture-in-express-js-applications" to keep it extremely clean, I want it to take 10/10 level ✅
+    - Update it's favicon logo that is displayed in browser title bar to something meaning as we have for react_developers_guide ✅
+    - Please make sure that we have covered most of the topics, here is the topic list I asked my backend friend, we just need to check this topic list to find out the missing ones in ours ✅
+        - Foundations
+            - How the web works: client-server model, DNS, TCP/IP, TLS/HTTPS
+            - HTTP in depth: methods, status codes, headers, cookies, content negotiation, caching headers, CORS
+            - Networking basics: ports, reverse proxies (Nginx/Caddy), load balancers
+            - Linux and shell: processes, permissions, logs, ssh, curl, systemd
+            - Git workflow and code review practices
+        - Runtime and language
+            - Node.js internals: event loop, async I/O, streams, worker threads
+            - Processes vs threads, concurrency vs parallelism
+            - Server-side TypeScript: project setup, module system, strict config
+            - Configuration and environments: 12-factor, env vars, per-environment config (dev/staging/prod)
+            - Dependency management: lockfiles, auditing, upgrade strategy
+        - API design
+            - REST: resource modeling, naming, idempotency, pagination, filtering, sorting
+            - Versioning and backward compatibility
+            - Consistent error format (e.g., RFC 9457 problem details)
+            - OpenAPI specs as the source of truth
+            - Awareness only, after REST: GraphQL, gRPC, tRPC
+            - Webhooks: sending, receiving, signature verification
+        - Architecture
+            - Layering: controller → service → repository
+            - Dependency injection, DTOs, domain vs infrastructure
+            - Clean/hexagonal architecture
+            - Modular monolith first; monolith vs microservices trade-offs
+            - Architecture decision records (ADRs)
+        - Databases
+            - Relational modeling: normalization, constraints, keys, ID strategy (UUIDv7 vs sequential)
+            - SQL by hand: joins, aggregates, CTEs, window functions
+            - Indexes, query plans (EXPLAIN), N+1 queries
+            - Transactions, isolation levels, locking (optimistic vs pessimistic)
+            - Migrations, including backward-compatible and zero-downtime ones
+            - Connection pooling
+            - ORM usage (Prisma or Drizzle) after raw SQL
+            - Data modeling details: soft deletes, audit logs, UTC timestamps, money as integers/decimals, never floats
+            - NoSQL types and when they're justified
+            - Redis basics
+            - Full-text search (Postgres first, Elasticsearch/OpenSearch only when outgrown)
+            - Backups, restores, and replication basics
+        - Correctness under concurrency
+            - Race conditions, unique constraints, idempotency keys
+            - Retries, timeouts, backoff, circuit breakers
+            - Graceful shutdown, backpressure
+        - Validation and error handling
+            - Input validation at the boundary
+            - Typed error hierarchy, global error handling
+            - Failure modes: partial failure, third-party outages
+        - Authentication and authorization
+            - Password hashing (argon2/bcrypt)
+            - Sessions vs JWT, refresh token rotation
+            - OAuth2 and OIDC, social login
+            - RBAC and permission modeling
+            - Multi-tenancy and data isolation
+        - Security
+            - OWASP Top 10: injection, broken access control, SSRF, misconfiguration
+            - CSRF, XSS (from the server side), CORS policy
+            - Rate limiting and abuse prevention
+            - Secrets management
+            - Dependency vulnerability scanning
+            - PII handling, data retention, GDPR-style deletion
+        - Async and background work
+            - Job queues (BullMQ), retries, dead-letter queues
+            - Scheduled jobs, safe across multiple instances
+            - Event-driven basics: pub/sub, outbox pattern
+            - Third-party integrations: payments (Stripe), email/SMS
+        - Caching and performance
+            - Application caching (Redis), cache invalidation strategies
+            - HTTP caching and CDNs
+            - Profiling, load testing, latency vs throughput
+            - Stateless services, horizontal scaling
+        - Real-time and files
+            - WebSockets and Server-Sent Events
+            - File uploads, object storage (S3), presigned URLs
+        - Testing
+            - Unit tests
+            - Integration tests against a real database (Testcontainers)
+            - API and contract tests
+            - End-to-end tests
+            - Test data and fixtures strategy
+        - Observability and debugging
+            - Structured logging, correlation IDs
+            - Metrics, tracing (OpenTelemetry)
+            - Health and readiness checks
+            - Alerting basics, debugging production issues
+        - Deployment and operations
+            - Docker and Docker Compose
+            - CI/CD pipelines
+            - One managed cloud platform end to end
+            - Feature flags, safe rollouts, rollbacks
+            - Awareness only: Kubernetes, infrastructure-as-code
+        - Advanced architecture (after the capstone)
+            - Domain-Driven Design: ubiquitous language, bounded contexts, aggregates, entities vs value objects, domain events, anti-corruption layers. Do this first, because it gives you the vocabulary for the rest.
+            - Microservices: service boundaries, when to split and when not to, inter-service communication (sync vs async), API gateways, service discovery, distributed tracing, data ownership per service, saga pattern for cross-service transactions, and the distributed monolith anti-pattern.
+            - CQRS: separating read and write models, read replicas and projections, eventual consistency consequences for the UI.
+            - Event sourcing: event stores, replay, snapshots, projections, schema evolution of events. Do this last. It is the most expensive pattern to adopt and the one most often misapplied.
+            - Messaging systems: Kafka (log-based) vs RabbitMQ/SQS (queue-based), delivery guarantees, consumer groups, ordering, exactly-once myths, outbox pattern in depth.
+        - Infrastructure and platform
+            - Kubernetes: pods, deployments, services, ingress, config and secrets, health probes, autoscaling, resource limits, Helm
+            - Infrastructure-as-code: Terraform (or Pulumi), environment reproducibility, state management
+            - Cloud-native operations: service meshes (awareness), managed vs self-hosted trade-offs, cost management
+            - Reliability engineering: SLIs/SLOs, incident response, postmortems, chaos testing basics, disaster recovery
+        - Data engineering
+            - Batch vs stream processing, ETL/ELT
+            - Change data capture (Debezium)
+            - Data warehouses (BigQuery/Snowflake), OLTP vs OLAP
+            - Workflow orchestration (Airflow, Dagster)
+            - Analytics pipelines and event tracking
+        - Best practices
+            - Documentation, code review standards, API changelogs
+            - Distributed systems basics: consistency, CAP, eventual consistency, message ordering (read now, apply later)
+    - I am assuming you will reflect the latest code in the code snippets too ✅
+
+
+- Development tasks:
+    - Primary tasks are all done, they are not removed from here for future reference to other projects

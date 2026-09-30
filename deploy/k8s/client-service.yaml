@@ -1,0 +1,19 @@
+# Stable in-cluster address for the client pods (networking basics topic).
+# ClusterIP only — the outside world arrives through the Ingress, not NodePorts.
+apiVersion: v1
+kind: Service
+metadata:
+  name: client
+  namespace: express-guide
+  labels:
+    app.kubernetes.io/name: client
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: express-guide
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: client
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

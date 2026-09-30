@@ -1,0 +1,48 @@
+# CI for the guide's two packages (deployment topic: CI/CD pipelines).
+# Same contract as the devcontainer definition-of-done, per package:
+# npm ci → tests → npm run build (the server gates on `npm run test:coverage`,
+# which enforces the coverage thresholds configured in vitest.config.ts).
+# Honest about this repo's test suite:
+# vitest runs with NODE_ENV unset → forces NODE_ENV=test → sqlite ':memory:',
+# and the live mongo/redis suites are describe.skipIf-gated on
+# MONGO_TEST_URI / REDIS_TEST_URI, so NO service containers are needed here.
+# There is no lint script in either package.json — nothing faked below.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run test:coverage
+      - run: npm run build
+
+  client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

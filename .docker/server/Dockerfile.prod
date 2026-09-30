@@ -1,0 +1,37 @@
+# ---- build stage: compile TypeScript (dev deps never leave this stage) ----
+FROM node:22-alpine AS build
+# better-sqlite3 is a NATIVE module, and npm's legacy binding.gyp default
+# runs `node-gyp rebuild` at install (the package ships no install script —
+# the default still fires). Without python3/make/g++ that step FAILS and
+# takes npm ci with it ("gyp ERR! find Python" on a bare node:22-alpine,
+# verified). The runtime binary is the bundled musl prebuild either way, but
+# the install itself must succeed — so the toolchain lives in the BUILD
+# stages only.
+RUN apk add --no-cache python3 make g++
+WORKDIR /app
+COPY server/package*.json ./
+RUN npm ci
+COPY server/tsconfig.json ./
+COPY server/src ./src
+RUN npm run build
+
+# ---- prod-deps stage: install PRODUCTION deps (with their native build) ----
+FROM node:22-alpine AS prod-deps
+# Same toolchain, same reason: `npm ci --omit=dev` still runs the gyp default.
+RUN apk add --no-cache python3 make g++
+WORKDIR /app
+COPY server/package*.json ./
+RUN npm ci --omit=dev
+
+# ---- runtime stage: node + built artifacts, NO compilers in the image ----
+FROM node:22-alpine
+ENV NODE_ENV=production
+WORKDIR /app
+# node_modules comes from the prod-deps stage — installed against this same
+# base image. The better-sqlite3 binding that actually loads at runtime is
+# the package's bundled prebuilds/linuxmusl-arm64.node (verified: the shipped
+# image has no build/Release binding, and the module still answers /api/posts).
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+EXPOSE 4000
+CMD ["node", "dist/server.js"]

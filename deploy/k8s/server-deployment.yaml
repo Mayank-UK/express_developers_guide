@@ -1,0 +1,81 @@
+# Server: the Express API + content server (deployment topic: containers to k8s;
+# observability topic: probes). Image tag mirrors .docker/docker-compose-prod.yml
+# (express_guide_server_prod, built locally by that file). A real cluster pulls
+# from a registry — this is the tag the guide's curriculum knows.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+  namespace: express-guide
+  labels:
+    app.kubernetes.io/name: server
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: express-guide
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: server
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: express-guide
+    spec:
+      securityContext:
+        # node:22-alpine's `node` user is uid 1000. The Dockerfile sets no USER
+        # (image default is root), so the pod enforces non-root here.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # sqlite_client.ts mkdirs the db's parent dir at boot — the emptyDir
+        # below must be group-writable for that.
+        fsGroup: 1000
+      containers:
+        - name: server
+          image: express_guide_server_prod:latest
+          ports:
+            - name: http
+              containerPort: 4000
+          envFrom:
+            - configMapRef:
+                name: express-guide-config
+          # Liveness: GET /api/health — pure "process is up" check
+          # (health_routes.ts; no dependencies, always 200 while alive).
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          # Readiness: GET /api/demo/obs/health — the observability topic's
+          # readiness-shaped check strip (dependency states in the body).
+          # Honest note: this endpoint answers 200 even when ready:false —
+          # the probe gates on the route being served; a stricter deployment
+          # would answer 503 when not ready and let the probe fail.
+          readinessProbe:
+            httpGet:
+              path: /api/demo/obs/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        # SQLite is embedded → container-local by nature. emptyDir makes it
+        # writable for the non-root user; it is EPHEMERAL (lost on restart,
+        # per-pod — the scaling topic's statelessness lesson). Durability
+        # would need a PVC or a client-server database.
+        - name: data
+          emptyDir: {}

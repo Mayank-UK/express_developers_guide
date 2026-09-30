@@ -1,0 +1,54 @@
+# Devcontainer override — layered ON TOP OF ../.docker/docker-compose.yml
+# (devcontainer.json lists the base file first, this one second, so `dev` is
+# ADDED to the dev stack without modifying it).
+#
+# `dev` is the container VS Code attaches to: a full Node 22 toolchain on
+# glibc (python3/make/g++ included, so npm's node-gyp fallback can never kill
+# a native-dep install like better-sqlite3) plus git for source control. The
+# devcontainer starts the whole stack: `dev` (this tooling container, no
+# published ports) alongside the server/client app containers and redis/mongo
+# — the app containers run their dev servers themselves (hot-reload via bind
+# mounts, ports published to the host), so the integrated terminals are for
+# tests/git/builds, not for running the app. The optional run-the-API-in-a-
+# terminal debug path: stop the server container first (redis/mongo keep
+# running), then `cd server && npm run dev`. The dev service publishes no
+# ports itself.
+services:
+  dev:
+    image: node:22-bookworm
+    container_name: express_developers_guide_dev
+    init: true
+    working_dir: /workspaces/express_developers_guide
+    # Bootstrap as root, then drop to the image's `node` user for the
+    # long-running process. Fresh anonymous volumes are created root-owned
+    # and node:22-bookworm ships no sudo, so boot-time chown is the one
+    # clean moment to make the node_modules volumes writable for the
+    # `remoteUser`. After this everything (VS Code server, npm ci, dev
+    # servers, tests) runs as `node`.
+    command: >-
+      bash -c "chown node:node /workspaces/express_developers_guide/server/node_modules
+      /workspaces/express_developers_guide/client/node_modules
+      && exec setpriv --reuid=node --regid=node --init-groups sleep infinity"
+    volumes:
+      # Same bind-mount style as the base compose (paths relative to THIS
+      # file): the repo root at the VS Code workspace folder.
+      - ../:/workspaces/express_developers_guide
+      # Anonymous shadow volumes (the base file's /app/node_modules pattern):
+      # container installs live in Docker and never leak onto the host, and
+      # the host's (intentionally nonexistent) dirs never shadow them.
+      - /workspaces/express_developers_guide/server/node_modules
+      - /workspaces/express_developers_guide/client/node_modules
+    environment:
+      # Service names on the compose network — environment beats env_file,
+      # the established pattern in .docker/docker-compose.yml. The server's
+      # dotenv only fills gaps, so these also win over .env.development's
+      # localhost addresses in the bound repo.
+      - REDIS_URL=redis://redis:6379
+      - MONGO_URI=mongodb://mongo:27017/express_guide_dev
+      # Deliberately NO NODE_ENV here: app_config defaults to development when
+      # it is unset, and vitest only forces NODE_ENV=test when the variable is
+      # UNDEFINED — a real NODE_ENV=development would leak into `npm test` and
+      # break the suite's "default test world" (it would go live against these
+      # very redis/mongo URLs and touch the real sqlite file).
+    networks:
+      - backend

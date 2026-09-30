@@ -1,0 +1,54 @@
+# Client: the nginx image serving the built React bundle (deployment topic).
+# Image tag mirrors .docker/docker-compose-prod.yml (express_guide_client_prod).
+# Port 80 is the nginx listen port from .docker/client/default.conf (compose
+# publishes it as 8080:80). No runAsNonRoot here, honestly: nginx:alpine's
+# master process must start as root to bind :80 and drop privileges to the
+# nginx worker user itself (the unprivileged variant listens on 8080 instead).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  namespace: express-guide
+  labels:
+    app.kubernetes.io/name: client
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: express-guide
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: client
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: client
+        app.kubernetes.io/component: web
+        app.kubernetes.io/part-of: express-guide
+    spec:
+      containers:
+        - name: client
+          image: express_guide_client_prod:latest
+          ports:
+            - name: http
+              containerPort: 80
+          # nginx answers 200 with index.html for / (SPA history fallback),
+          # so the root path is an honest probe for "nginx is serving".
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

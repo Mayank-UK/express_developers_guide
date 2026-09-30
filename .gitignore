@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.log
+server/data/
+# Vitest HTML coverage report (server: npm run test:coverage)
+coverage/
+.DS_Store
+# Playwright E2E artifacts (e2e/node_modules is covered by node_modules/ above)
+e2e/test-results/
+e2e/playwright-report/
+# Env files stay out of git — EXCEPT this guide's three teaching files, which
+# contain only placeholders/local URLs and ARE the environments topic's
+# example (negations must come after the rule; the parent server/ dir is not
+# excluded, so re-including files under it works).
+.env*
+!server/.env.development
+!server/.env.staging
+!server/.env.production

@@ -1,0 +1,27 @@
+# Horizontal Pod Autoscaler for the server (scaling topic: stateless services,
+# horizontal scaling). CPU-percentage targets need a CPU REQUEST on the
+# deployment's containers — server-deployment.yaml requests 100m, so 70% means
+# scaling out around 70m of actual use per pod.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: server
+  namespace: express-guide
+  labels:
+    app.kubernetes.io/name: server
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: express-guide
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: server
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

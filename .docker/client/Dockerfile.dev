@@ -1,0 +1,8 @@
+FROM node:22-alpine
+WORKDIR /app
+COPY client/package*.json ./
+RUN npm ci
+COPY client/ ./
+EXPOSE 5173
+# --host keeps Vite bound to 0.0.0.0 (also set in vite.config.ts).
+CMD ["npm", "run", "dev", "--", "--host"]

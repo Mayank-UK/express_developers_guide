@@ -1,0 +1,14 @@
+FROM node:22-alpine
+WORKDIR /app
+# better-sqlite3's install runs node-gyp via npm's binding.gyp default —
+# python3/make/g++ or npm ci fails ("gyp ERR! find Python"). The dev image
+# keeps the toolchain: dev is where you rebuild natives constantly. See
+# Dockerfile.prod for the full story and the no-compilers runtime stage.
+RUN apk add --no-cache python3 make g++
+# Copy manifests first to leverage Docker layer caching.
+COPY server/package*.json ./
+RUN npm ci
+COPY server/ ./
+EXPOSE 4000
+# `npm run dev` = tsx watch src/server.ts; the app binds 0.0.0.0 so the port map works.
+CMD ["npm", "run", "dev"]

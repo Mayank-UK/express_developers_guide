@@ -1,0 +1,100 @@
+/**
+ * Design tokens — the single source of truth for the app's visual language.
+ *
+ * Tokens are plain CSS custom properties so they can be read from both CSS and
+ * TypeScript (see sizes.ts / shadows.ts). Light is the default; dark is opted
+ * into via `[data-theme="dark"]` on <html> (driven by ThemeProvider).
+ *
+ * Palette: a neutral slate base with a single indigo accent — calm, modern, and
+ * readable. The accent is used sparingly (links, focus, active states, small
+ * marks) so the page reads as mostly-neutral with clear emphasis points.
+ */
+
+:root {
+  /* ---- Brand / color scheme ---- */
+  --color-primary: #4f46e5; /* indigo-600 */
+  --color-primary-container: #4338ca; /* indigo-700 (hover) */
+  --color-secondary: #0d9488; /* teal-600 — used sparingly */
+  --color-secondary-container: #0f766e;
+  --color-surface: #ffffff; /* page background */
+  --color-surface-tint: #f8fafc; /* slate-50 — section backgrounds */
+  --color-surface-variant: #f1f5f9; /* slate-100 — code backgrounds */
+  --color-error: #dc2626;
+  --color-on-primary: #ffffff;
+  --color-on-secondary: #ffffff;
+  --color-on-surface: #0f172a; /* slate-900 */
+  --color-on-surface-variant: #64748b; /* slate-500 */
+  --color-on-error: #ffffff;
+  --color-outline: #e2e8f0; /* slate-200 */
+
+  /* ---- Severity colors (used by ShowError / FailureSnackbar) ---- */
+  --color-info: #2563eb;
+  --color-warning: #d97706;
+  --color-critical: #dc2626;
+
+  /* ---- Typography ---- */
+  --font-display: 'Montserrat', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-display-lg: clamp(2.5rem, 8vw, 6rem);
+  --text-display-md: clamp(2rem, 5vw, 3.75rem);
+  --text-display-sm: clamp(1.75rem, 4vw, 3rem);
+  --text-headline: 34px;
+  --text-title-lg: 24px;
+  --text-title: 20px;
+  --text-title-sm: 16px;
+  --text-body: 16px;
+  --text-body-sm: 14px;
+  --text-caption: 12px;
+  --text-overline: 10px;
+
+  /* ---- Spacing scale (mirrors DSSizes) ---- */
+  --space-xxs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 32px;
+  --space-xl: 64px;
+  --space-xxl: 128px;
+
+  /* ---- Radius ---- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
+
+  /* ---- Elevation / shadows (mirrors DSShadows) ---- */
+  --shadow-button-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.1);
+  --shadow-button-card-hover: 0 4px 8px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.06);
+  --shadow-modal: 0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px rgba(15, 23, 42, 0.04);
+
+  /* ---- Layout ---- */
+  --content-max-width: 960px;
+  --header-height: 64px;
+}
+
+[data-theme='dark'] {
+  --color-primary: #818cf8; /* indigo-400 — brighter on dark */
+  --color-primary-container: #6366f1;
+  --color-secondary: #2dd4bf;
+  --color-secondary-container: #14b8a6;
+  --color-surface: #0b1120; /* slate-950-ish */
+  --color-surface-tint: #131c2e;
+  --color-surface-variant: #1c2740;
+  --color-error: #f87171;
+  --color-on-primary: #0b1120;
+  --color-on-secondary: #0b1120;
+  --color-on-surface: #e2e8f0; /* slate-200 */
+  --color-on-surface-variant: #94a3b8; /* slate-400 */
+  --color-on-error: #0b1120;
+  --color-outline: #243049;
+
+  --color-info: #60a5fa;
+  --color-warning: #fbbf24;
+  --color-critical: #f87171;
+
+  --shadow-button-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-button-card-hover: 0 4px 8px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px rgba(0, 0, 0, 0.4);
+}
