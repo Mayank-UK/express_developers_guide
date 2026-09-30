@@ -106,6 +106,14 @@ function uploadGuard(middleware: RequestHandler): RequestHandler {
           id: 'files-receiving-safety:multipart-quirks',
           body: `THE INTEGRATION QUIRKS you will hit on day one, all proven by this app's specs. MOUNT MULPER ON THE ROUTE, not the app: it is a parser like express.json — app-global multipart parsing means every route pays it and text-field limits apply everywhere; the upload route mounts uploadGuard(upload.array('file', 3)) and nothing else knows multipart exists. THE FIELD NAME IS PART OF THE CONTRACT — upload.single('file')/array('file') expect parts under exactly that name; a client sending file_contents gets LIMIT_UNEXPECTED_FILE (mapped to a 400 here, raw 500 in unwrapped apps — the most common "multer broke my API" post on the internet). NO JSON BODY PARSER INVOLVEMENT: multipart content types are none of express.json's business, so the root parser skips these requests and multer IS the body parser — which also means the request-id/helmet ordering rules are unaffected. EMPTY UPLOADS: a multipart request with only text fields reaches the controller with req.files as an empty array — this route answers a 400 naming the expected field, because "successfully stored nothing" is not a 201. THE SANITIZATION PAIR, one more time because it is the actual security boundary: originalName is sanitized into DISPLAY metadata (never touches the filesystem), storedName is generated from nothing the client said (never displayed). The download endpoint re-runs the sanitizer when composing the Content-Disposition filename — defense in depth, same function, because the metadata store is not trusted either the day a second write path appears.`,
         },
+        {
+          kind: 'demo',
+          id: 'files-receiving-safety:workbench-demo',
+          demoId: 'files:workbench',
+          title: 'The files workbench: upload, library, ranges, backpressure, the path guard',
+          description:
+            'Real uploads through the multer validation stack (MIME allowlist, 5MB cap, generated names) with sharp thumbnails on the cards; a range tester firing bytes=0-99 / suffix / unsatisfiable headers at the hand-rolled 206/416 responder; the honest drainEvents report from the backpressure pipeline; and the live containment guard rejecting ../ in plain and URL-decoded spellings without ever reading a file.',
+        },
       ],
     },
     {
@@ -487,22 +495,14 @@ export function safeJoin(root: string, candidate: string): SafeJoinResult {
     },
     {
       id: 'files-live',
-      title: 'See it live (the workbench)',
+      title: 'The workbench from a terminal',
       lead:
         'Five panels over the real endpoints: an upload with the full validation stack, the file library with sharp thumbnails, a range tester against the hand-rolled responder, the backpressure report, and the path guard you can attack.',
       blocks: [
         {
           kind: 'text',
           id: 'files-live:intro',
-          body: `THE WORKBENCH'S FIVE PANELS. UPLOAD: a file input (the allowlist as its accept attribute) sends multipart via fetch + FormData straight at the real multer stack — a small PNG or a text file lands as a card in the library; a >5MB file comes back as the 400 envelope naming LIMIT_FILE_SIZE (the bait: try it — the button is yours); a .exe comes back mime_not_allowed; and a text file RENAMED .png sails past the filter and comes back with the honest demotion note, because the filter sees declarations, not bytes (fetch cannot report UPLOAD progress — it has no progress event for request bodies — the panel says so and points at XHR or the newer streams, the standard workaround). LIBRARY: every stored file as a card — the sharp webp thumbnail in a real <img>, the sanitized display name, size, kind — with open-raw (inline) and download (attachment) links, so the Content-Disposition split from the downloads section is one click apart. RANGE TESTER: pick a stored file and fire canned Range headers at /stream — bytes=0-99 (a 206 with Content-Range and exactly 100 received bytes), last 50 (the suffix form), and an unsatisfiable offset (the 416 with its bytes */size pointer) — each verdict rendered as status + Content-Range + RECEIVED-BYTES-VS-FULL-SIZE, so partial content stops being a diagram and becomes arithmetic. BACKPRESSURE: runs the pipeline endpoint and renders its honest report — chunks written, drainEvents, pausedMs — with the reminder that a fast local client honestly reports zero pauses and the unit-tested fake sink is where the pattern is proven. PATH GUARD: the input is prefilled with ../../etc/passwd (URL-encoded on the wire, decoded by the framework — the panel shows both); press check and the guard answers rejected with the resolved path that escaped; swap in a safe name and it answers allowed with the path that stayed home — and the endpoint never reads a byte either way. The curl block below drives the same surface from a terminal, including the boundary-level view of a multipart body and a range loop worth watching.`,
-        },
-        {
-          kind: 'demo',
-          id: 'files-live:workbench-demo',
-          demoId: 'files:workbench',
-          title: 'The files workbench: upload, library, ranges, backpressure, the path guard',
-          description:
-            'Real uploads through the multer validation stack (MIME allowlist, 5MB cap, generated names) with sharp thumbnails on the cards; a range tester firing bytes=0-99 / suffix / unsatisfiable headers at the hand-rolled 206/416 responder; the honest drainEvents report from the backpressure pipeline; and the live containment guard rejecting ../ in plain and URL-decoded spellings without ever reading a file.',
+          body: `THE WORKBENCH'S FIVE PANELS (the interactive workbench itself now lives beside the upload-validation section above). UPLOAD: a file input (the allowlist as its accept attribute) sends multipart via fetch + FormData straight at the real multer stack — a small PNG or a text file lands as a card in the library; a >5MB file comes back as the 400 envelope naming LIMIT_FILE_SIZE (the bait: try it — the button is yours); a .exe comes back mime_not_allowed; and a text file RENAMED .png sails past the filter and comes back with the honest demotion note, because the filter sees declarations, not bytes (fetch cannot report UPLOAD progress — it has no progress event for request bodies — the panel says so and points at XHR or the newer streams, the standard workaround). LIBRARY: every stored file as a card — the sharp webp thumbnail in a real <img>, the sanitized display name, size, kind — with open-raw (inline) and download (attachment) links, so the Content-Disposition split from the downloads section is one click apart. RANGE TESTER: pick a stored file and fire canned Range headers at /stream — bytes=0-99 (a 206 with Content-Range and exactly 100 received bytes), last 50 (the suffix form), and an unsatisfiable offset (the 416 with its bytes */size pointer) — each verdict rendered as status + Content-Range + RECEIVED-BYTES-VS-FULL-SIZE, so partial content stops being a diagram and becomes arithmetic. BACKPRESSURE: runs the pipeline endpoint and renders its honest report — chunks written, drainEvents, pausedMs — with the reminder that a fast local client honestly reports zero pauses and the unit-tested fake sink is where the pattern is proven. PATH GUARD: the input is prefilled with ../../etc/passwd (URL-encoded on the wire, decoded by the framework — the panel shows both); press check and the guard answers rejected with the resolved path that escaped; swap in a safe name and it answers allowed with the path that stayed home — and the endpoint never reads a byte either way. The curl block below drives the same surface from a terminal, including the boundary-level view of a multipart body and a range loop worth watching.`,
         },
         {
           kind: 'code',

@@ -210,6 +210,14 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   // …ephemeral port, real socket — then fetch + reader against \`\${baseUrl}\`…`,
         },
+        {
+          kind: 'demo',
+          id: 'testing-http-integration:demo',
+          demoId: 'testing:runner',
+          title: 'The in-app test runner',
+          description:
+            'A real twelve-case suite executed against this app\u2019s own pure modules on every request — pass/fail chips, expected vs actual, module of origin, and an inject-a-failure knob proving the harness reports failures honestly.',
+        },
       ],
     },
     {
@@ -221,7 +229,7 @@ beforeAll(async () => {
         {
           kind: 'text',
           id: 'testing-awkward-bits:time',
-          body: `TIME — INJECT THE CLOCK. A test that sleeps is a test that is slow AND lying (real timers drift under load). The job queue's constructor takes now, setTimeoutFn, and clearTimeoutFn — so its spec drives a FAKE CLOCK: advance(ms) fires every due timer in scheduled order, deterministically, in microseconds. You can then assert "the retry fired at ~300ms" without ever waiting 300ms, and — the part real timers can never give you — assert that NO timer leaked (pendingCount === 0 proves the loop ran out of work). THE MICROTASK SUBTLETY in advance(): an async handler chain registers its NEXT timer synchronously at each await, so after firing a timer the host awaits setImmediate — draining the microtask queue — before selecting the next deadline. Without that line, the chain's follow-up timer registers AFTER the selection pass and the sequence stalls; with it, a 60-line host replaces a timing-sensitive integration test with an exact one. RANDOMNESS — ASSERT THE BOUNDS. The queue's backoff is base × 2^(n-1) ± 20% jitter, and the jitter is REAL (Math.random every run) — so the spec does not fight it, it PINS THE ENVELOPE: delayMs between 240 and 360 for attempt one, 480–720 for attempt two. That is the general answer for any randomized behavior: assert the INVARIANT (the bounds, the distribution's shape, the seed-independent property), never one sampled value. THE LIVE DEMO at the bottom of this topic runs exactly this case against the real queue on every request — its delay number is different every time you click, and its verdict is always pass.`,
+          body: `TIME — INJECT THE CLOCK. A test that sleeps is a test that is slow AND lying (real timers drift under load). The job queue's constructor takes now, setTimeoutFn, and clearTimeoutFn — so its spec drives a FAKE CLOCK: advance(ms) fires every due timer in scheduled order, deterministically, in microseconds. You can then assert "the retry fired at ~300ms" without ever waiting 300ms, and — the part real timers can never give you — assert that NO timer leaked (pendingCount === 0 proves the loop ran out of work). THE MICROTASK SUBTLETY in advance(): an async handler chain registers its NEXT timer synchronously at each await, so after firing a timer the host awaits setImmediate — draining the microtask queue — before selecting the next deadline. Without that line, the chain's follow-up timer registers AFTER the selection pass and the sequence stalls; with it, a 60-line host replaces a timing-sensitive integration test with an exact one. RANDOMNESS — ASSERT THE BOUNDS. The queue's backoff is base × 2^(n-1) ± 20% jitter, and the jitter is REAL (Math.random every run) — so the spec does not fight it, it PINS THE ENVELOPE: delayMs between 240 and 360 for attempt one, 480–720 for attempt two. That is the general answer for any randomized behavior: assert the INVARIANT (the bounds, the distribution's shape, the seed-independent property), never one sampled value. THE LIVE DEMO in the Supertest section above runs exactly this case against the real queue on every request — its delay number is different every time you click, and its verdict is always pass.`,
         },
         {
           kind: 'code',
@@ -438,14 +446,14 @@ REDIS_TEST_URI=redis://localhost:6379 npm test                        # server, 
     },
     {
       id: 'testing-see-it-live',
-      title: 'See it live',
+      title: 'The in-app runner from a terminal',
       lead:
         'A real test runner, inside the running server — twelve curated cases against this app\u2019s own modules, executed on every request.',
       blocks: [
         {
           kind: 'text',
           id: 'testing-see-it-live:what-you-see',
-          body: `THE DEMO is not a mock-up of a runner — it IS one. Pressing RUN calls GET /api/demo/testing/run, and the server executes a curated twelve-case suite against its OWN pure modules right then: the Range parser's three-way verdict matrix (suffix form, unsatisfiable-past-end, ignored non-bytes unit — the same behaviors files_demo_routes.spec pins), the locale negotiator's match ladder (exact case-insensitive, primary-subtag fallback, wildcard-ranked-last — negotiate.spec's classic cases), the JWT service's security properties (roundtrip, tampered-payload, expired — the auth spec's unit block), the job queue's backoff-bounds case driven through a FAKE CLOCK exactly like job_queue.spec (its delay number is different every run — jitter — and its verdict is always pass), and two Accept-Language parser edges (q clamping, malformed-segments-never-throw). Each case reports its module of origin, its expected vs actual strings, and its wall time; the backoff case's actual will show a DIFFERENT delayMs on every click — live randomness, pinned by bounds, exactly as the section above teaches. THE HONESTY KNOB: pick a case in the inject-a-failure selector and the runner flips exactly that case to red — with its real expected/actual still shown — proving the harness reports failures rather than always painting green (and an unknown case id is a 400 envelope listing the valid ids). A failure appearing on a plain RUN would mean the app drifted from the behaviors this page teaches — the endpoint doubles as a canary. Or drive it from a terminal:`,
+          body: `THE RUNNER is not a mock-up of one — it IS one (the interactive panel with the RUN button lives in the Supertest section above). Calling GET /api/demo/testing/run makes the server execute a curated twelve-case suite against its OWN pure modules right then: the Range parser's three-way verdict matrix (suffix form, unsatisfiable-past-end, ignored non-bytes unit — the same behaviors files_demo_routes.spec pins), the locale negotiator's match ladder (exact case-insensitive, primary-subtag fallback, wildcard-ranked-last — negotiate.spec's classic cases), the JWT service's security properties (roundtrip, tampered-payload, expired — the auth spec's unit block), the job queue's backoff-bounds case driven through a FAKE CLOCK exactly like job_queue.spec (its delay number is different every run — jitter — and its verdict is always pass), and two Accept-Language parser edges (q clamping, malformed-segments-never-throw). Each case reports its module of origin, its expected vs actual strings, and its wall time; the backoff case's actual will show a DIFFERENT delayMs on every call — live randomness, pinned by bounds, exactly as the section above teaches. THE HONESTY KNOB: pass injectFailureFor=<case> and the runner flips exactly that case to red — with its real expected/actual still shown — proving the harness reports failures rather than always painting green (and an unknown case id is a 400 envelope listing the valid ids). A failure appearing on a plain run would mean the app drifted from the behaviors this page teaches — the endpoint doubles as a canary. Drive it from a terminal:`,
         },
         {
           kind: 'code',
@@ -457,14 +465,6 @@ REDIS_TEST_URI=redis://localhost:6379 npm test                        # server, 
 curl -s 'localhost:4000/api/demo/testing/run?injectFailureFor=jwt-tampered-payload' | head -c 600
 # and the guard — an unknown case id is a 400 envelope:
 curl -s 'localhost:4000/api/demo/testing/run?injectFailureFor=bogus' | head -c 300`,
-        },
-        {
-          kind: 'demo',
-          id: 'testing-see-it-live:demo',
-          demoId: 'testing:runner',
-          title: 'The in-app test runner',
-          description:
-            'A real twelve-case suite executed against this app\u2017s own pure modules on every request — pass/fail chips, expected vs actual, module of origin, and an inject-a-failure knob proving the harness reports failures honestly.',
         },
       ],
     },

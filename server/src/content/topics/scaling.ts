@@ -123,6 +123,14 @@ export function getSession(token: string): StoredSession | null {
 // a session or null. The Map became a shared store WITH TTLs, which also
 // deleted the sweep/expiry code: Redis does the lazy expiry for free.`,
         },
+        {
+          kind: 'demo',
+          id: 'scaling-statelessness:demo',
+          demoId: 'scaling:stateless',
+          title: 'The process-state inspector',
+          description:
+            'This app inventories its own statelessness LIVE: every piece of per-process state (sessions, limiter windows, job queue, SSE connections) counted from the running process with its breaks-scaling verdict and the fix that relocates it — beside the already-shared stores. Refresh and watch the counts move as you log in, connect, and enqueue.',
+        },
       ],
     },
     {
@@ -359,14 +367,14 @@ inputs live in:   /api/demo/obs/metrics  (request counters, event-loop delay)
     },
     {
       id: 'scaling-see-it-live',
-      title: 'See it live',
+      title: 'The state inventory from a terminal',
       lead:
-        'The process-state inspector: this app grades its own statelessness live — every hazard counted from the running process, every fix named.',
+        'This app grades its own statelessness over curl — every hazard counted from the running process, every fix named.',
       blocks: [
         {
           kind: 'text',
           id: 'scaling-see-it-live:what-you-see',
-          body: `THE DEMO makes section two measurable: \`GET /api/demo/scaling/state\` inspects THIS PROCESS and returns its state inventory with LIVE counts — the session store's current size, the job queue's depth, the SSE feed's open connections, the rate limiters' configured windows (their counter Maps are deliberately private, so the demo reports what they're configured to do — an honest not-exposed note, not a fake number), each with its shared? / breaks-scaling? verdict and the FIX that relocates it. The two lists are the whole topic in one response: STATEFUL (breaks horizontal scaling until relocated) and SHARED/STATELESS (already fine — including sqlite, with the single-writer caveat). The PID and replicas:1 fields are the punchline — open two browser tabs against two replicas and each tab's session count, queue depth, and connection count would DISAGREE, because each endpoint measures only the process that answered it. Log in through the auth demo first and watch the session counter tick up; open the realtime ticker in another tab and watch connections go 0 → 1; enqueue a job and watch depth spike and drain. Or script it:`,
+          body: `THE ENDPOINT makes section two measurable: \`GET /api/demo/scaling/state\` inspects THIS PROCESS and returns its state inventory with LIVE counts — the session store's current size, the job queue's depth, the SSE feed's open connections, the rate limiters' configured windows (their counter Maps are deliberately private, so the endpoint reports what they're configured to do — an honest not-exposed note, not a fake number), each with its shared? / breaks-scaling? verdict and the FIX that relocates it. The two lists are the whole topic in one response: STATEFUL (breaks horizontal scaling until relocated) and SHARED/STATELESS (already fine — including sqlite, with the single-writer caveat). The PID and replicas:1 fields are the punchline — open two browser tabs against two replicas and each tab's session count, queue depth, and connection count would DISAGREE, because each endpoint measures only the process that answered it. The interactive inspector panel lives in the Statelessness section above; from a terminal, script the same tour:`,
         },
         {
           kind: 'code',
@@ -388,14 +396,6 @@ curl -s -X POST localhost:4000/api/demo/jobs/enqueue \\
   -H 'content-type: application/json' \\
   -d '{"type":"report","payload":{"source":"scaling demo"}}' > /dev/null
 curl -s localhost:4000/api/demo/jobs/stats | python3 -m json.tool`,
-        },
-        {
-          kind: 'demo',
-          id: 'scaling-see-it-live:demo',
-          demoId: 'scaling:stateless',
-          title: 'The process-state inspector',
-          description:
-            'This app inventories its own statelessness LIVE: every piece of per-process state (sessions, limiter windows, job queue, SSE connections) counted from the running process with its breaks-scaling verdict and the fix that relocates it — beside the already-shared stores. Refresh and watch the counts move as you log in, connect, and enqueue.',
         },
       ],
     },

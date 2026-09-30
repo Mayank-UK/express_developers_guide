@@ -29,7 +29,9 @@ test('a topic page renders sections, collapsed code, and its live-demo panels', 
     page.getByRole('heading', { level: 2, name: 'The transactional outbox' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { level: 2, name: 'See it live' }),
+    page
+      .getByRole('article')
+      .getByRole('heading', { level: 2, name: 'Drive the stream and outbox from a terminal' }),
   ).toBeVisible();
 
   // Code blocks start collapsed: the language toggle is aria-expanded=false

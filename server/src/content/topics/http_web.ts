@@ -48,7 +48,7 @@ curl -v 'http://localhost:4000/api/demo/node/blocking?workMs=50'
         {
           kind: 'text',
           id: 'http-journey:express',
-          body: `Where exactly does Express begin? Node's http module owns the socket and incrementally parses incoming bytes; each completed HTTP message fires a 'request' event with two objects — req (the parsed request) and res (a writable response under construction). Express is a pipeline mounted on that event: middleware and routers consume req, mutate it (parsing cookies, bodies, attaching correlation ids), and eventually write to res. Your handler is one stage in that pipeline — which is why it receives request ALREADY partially processed (req.query parsed, res.locals populated by earlier middleware) and why anything you do to res after the response has been sent is silently too late.\n\nThe live demo at the bottom of this screen makes the boundary concrete: it asks the server to echo the request exactly as it arrived — method, HTTP version, path, parsed query, and every header the server actually saw, including headers injected by hops along the way (the correlation id, the proxy's host rewrite) — next to the response headers coming back. What the browser thought it sent and what the server received are two different views of one message.`,
+          body: `Where exactly does Express begin? Node's http module owns the socket and incrementally parses incoming bytes; each completed HTTP message fires a 'request' event with two objects — req (the parsed request) and res (a writable response under construction). Express is a pipeline mounted on that event: middleware and routers consume req, mutate it (parsing cookies, bodies, attaching correlation ids), and eventually write to res. Your handler is one stage in that pipeline — which is why it receives request ALREADY partially processed (req.query parsed, res.locals populated by earlier middleware) and why anything you do to res after the response has been sent is silently too late.\n\nThe live demo in the next section makes the boundary concrete: it asks the server to echo the request exactly as it arrived — method, HTTP version, path, parsed query, and every header the server actually saw, including headers injected by hops along the way (the correlation id, the proxy's host rewrite) — next to the response headers coming back. What the browser thought it sent and what the server received are two different views of one message.`,
         },
       ],
     },
@@ -90,6 +90,14 @@ app.use((req: Request, res: Response) => {
           kind: 'text',
           id: 'http-message:headers',
           body: `Header basics, server-side: Node receives request headers lowercased on an object (req.headers['user-agent']), sends response headers exactly as you set them, and preserves insertion order. Request headers you will actually read constantly: host, content-type (what parser to run), content-length, authorization, cookie, accept, and the x- forwarding headers proxies add. Response headers you will set constantly: content-type, cache-control, location (with 3xx), set-cookie, and custom correlation headers like this app's x-request-id. Repeated headers (Set-Cookie especially) arrive and leave as arrays; everything else is a single value. On the wire under HTTP/2 header names are always lowercase — one reason code that matches header names case-insensitively survives every hop, and code that does not, does not.`,
+        },
+        {
+          kind: 'demo',
+          id: 'http-message:demo',
+          demoId: 'http:headers',
+          title: 'The header inspector',
+          description:
+            'Inspect my request — the server echoes the request line, parsed query, and every header it actually received (your custom browser headers included), next to the response headers that came back. Then negotiate: fetch the same resource with three different Accept headers and watch Content-Type (and the body itself) change with your preference.',
         },
       ],
     },
@@ -364,13 +372,13 @@ curl -s -o /dev/null -w '%{http_version}\\n' https://example.com
     },
     {
       id: 'http-live',
-      title: 'See it live',
-      lead: 'Two experiments against this very server: inspect the request the server actually received, and negotiate one resource into three representations.',
+      title: 'Inspect the wire from a terminal',
+      lead: 'The same two experiments, no browser needed: curl the echo endpoint to see the request the server actually received, and negotiate one resource into three representations.',
       blocks: [
         {
           kind: 'text',
           id: 'http-live:intro',
-          body: `The first experiment echoes a request back as the server saw it: the request line (method, path, HTTP version), the parsed query string, and every header that actually arrived — including the correlation id this app assigned, shown the way a proxy would forward it. Alongside it come the response headers that traveled back, so you can compare the two directions of the metadata channel. The second experiment is content negotiation for real: request the same resource with three different Accept headers and watch the server pick a different representation each time — JSON, flattened text, or a tiny HTML document — announcing the choice in Content-Type and keying caches with Vary: Accept.`,
+          body: `The interactive header inspector lives at the end of "Methods, status codes, and headers" above; the curls below run the same two experiments against the same endpoints. The first echoes a request back as the server saw it: the request line (method, path, HTTP version), the parsed query string, and every header that actually arrived — including the correlation id this app assigned, shown the way a proxy would forward it. Alongside it come the response headers that traveled back, so you can compare the two directions of the metadata channel. The second is content negotiation for real: request the same resource with three different Accept headers and watch the server pick a different representation each time — JSON, flattened text, or a tiny HTML document — announcing the choice in Content-Type and keying caches with Vary: Accept.`,
         },
         {
           kind: 'code',
@@ -390,14 +398,6 @@ curl -sD - -o /dev/null -H 'Accept: text/html'        localhost:4000/api/demo/ht
 # And the q-value case — plain text outranks JSON:
 curl -sD - -o /dev/null -H 'Accept: application/json;q=0.1, text/plain;q=0.9' \\
   localhost:4000/api/demo/http/negotiate`,
-        },
-        {
-          kind: 'demo',
-          id: 'http-live:demo',
-          demoId: 'http:headers',
-          title: 'The header inspector',
-          description:
-            'Inspect my request — the server echoes the request line, parsed query, and every header it actually received (your custom browser headers included), next to the response headers that came back. Then negotiate: fetch the same resource with three different Accept headers and watch Content-Type (and the body itself) change with your preference.',
         },
       ],
     },

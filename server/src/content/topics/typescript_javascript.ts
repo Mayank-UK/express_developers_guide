@@ -316,17 +316,25 @@ async create(httpRequest: HttpRequest): Promise<HttpResponse> {
           id: 'ts-erasure:layering',
           body: `That is why validation lives where it does in this guide's layering. The presentation edge treats input as unknown and stays thin. The domain use case — the first layer that must guarantee invariants — validates the runtime value's shape and rules and returns a typed failure instead of trusting anything. Whether the checks are hand-rolled, as in this repo, or expressed with a schema library like zod, the placement is identical: at the boundary, on runtime values, in the one place types cannot help you.\n\nThe live demo below makes erasure visible. Post any JSON you like and watch the server report what actually arrived — every typeof, every array, every null — information no compile-time type ever had.`,
         },
+        {
+          kind: 'demo',
+          id: 'ts-erasure:demo',
+          demoId: 'ts:runtime-types',
+          title: 'Runtime type inspection',
+          description:
+            'POST any JSON body and watch the server report the types it actually received — proof that TypeScript types are erased at runtime — alongside a serialized Result value and a narrowing trace from the types endpoint.',
+        },
       ],
     },
     {
       id: 'ts-live',
-      title: 'See it live',
+      title: 'The two endpoints from a terminal',
       lead: 'Two endpoints, one lesson: what the compiler proves versus what the runtime knows.',
       blocks: [
         {
           kind: 'text',
           id: 'ts-live:intro',
-          body: `Everything above splits into two worlds: what the compiler proves before the process starts, and what the runtime knows while a request is being served. Both endpoints below are part of this server. The echo endpoint accepts any JSON you send and reports the types it received at runtime — proof that the types are gone. The types endpoint returns a real Result value, serialized, plus a narrowing trace running the same runtime checks this topic showed you.`,
+          body: `Everything above splits into two worlds: what the compiler proves before the process starts, and what the runtime knows while a request is being served. Both endpoints below are part of this server (their interactive panel now lives beside the erasure section above). The echo endpoint accepts any JSON you send and reports the types it received at runtime — proof that the types are gone. The types endpoint returns a real Result value, serialized, plus a narrowing trace running the same runtime checks this topic showed you.`,
         },
         {
           kind: 'code',
@@ -340,14 +348,6 @@ curl -s -X POST localhost:4000/api/demo/ts/echo \\
 
 # A serialized Result plus a live narrowing trace:
 curl -s localhost:4000/api/demo/ts/types`,
-        },
-        {
-          kind: 'demo',
-          id: 'ts-live:demo',
-          demoId: 'ts:runtime-types',
-          title: 'Runtime type inspection',
-          description:
-            'POST any JSON body and watch the server report the types it actually received — proof that TypeScript types are erased at runtime — alongside a serialized Result value and a narrowing trace from the types endpoint.',
         },
       ],
     },

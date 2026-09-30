@@ -187,6 +187,14 @@ sqlite> EXPLAIN QUERY PLAN SELECT id, body FROM comments WHERE body LIKE '%rule%
 └──┴────────────────────┘
    SCAN = read EVERY row, always — fine at 6 rows, a page-storm at 6 million.`,
         },
+        {
+          kind: 'demo',
+          id: 'db-schema-indexes:explorer-demo',
+          demoId: 'db:schema-explorer',
+          title: 'The schema explorer',
+          description:
+            'Live introspection of the demo handle: posts + comments with columns/constraints, index badges (origin: explicit, unique, or pk), the FK with its ON DELETE CASCADE, and a query-plan panel contrasting an indexed SEARCH with a full SCAN via EXPLAIN QUERY PLAN.',
+        },
       ],
     },
     {
@@ -344,21 +352,13 @@ CREATE INDEX idx_audit_entity ON audit_log(entity, entity_id);`,
     },
     {
       id: 'db-schema-live',
-      title: 'See it live',
-      lead: 'A real schema explorer over a real SQLite handle: the posts table this guide runs plus a comments child table with a foreign key, a CHECK, a DEFAULT, and an explicit index — introspected live from sqlite_master and SQLite\'s own PRAGMAs, next to a query-plan panel that shows SEARCH vs SCAN with one button press.',
+      title: 'The schema endpoints from a terminal',
+      lead: 'The terminal companion to the schema explorer (now in the Indexes section above): the posts table this guide runs plus a comments child table with a foreign key, a CHECK, a DEFAULT, and an explicit index — introspected live from sqlite_master and SQLite\'s own PRAGMAs — and the query-plan endpoints that show SEARCH vs SCAN, replayed here from a terminal.',
       blocks: [
         {
           kind: 'text',
           id: 'db-schema-live:intro',
-          body: `The explorer below introspects a DEDICATED in-memory SQLite handle (never the guide's real guide.db — the demo builds its own, seeded with the real posts). Everything it renders comes from SQLite itself: tables and their DDL from sqlite_master, columns and nullability and defaults from PRAGMA table_info, indexes and their origin (explicit 'c', UNIQUE 'u', primary-key 'pk') from PRAGMA index_list + index_info, foreign keys with their ON DELETE policy from PRAGMA foreign_key_list, and live row counts. Read the COMMENTS card against everything above: the INTEGER PRIMARY KEY rowid alias, the post_id FK with CASCADE, the CHECK on body, the strftime DEFAULT, and idx_comments_post_id — then compare it with the POSTS card's automatic pk-origin index. The FK ENFORCEMENT chip reports the per-connection PRAGMA state this topic warned about — ON here, because the demo handle turns it on when it opens. The query-plan panel runs EXPLAIN QUERY PLAN against the same handle: INDEXED LOOKUP filters by post_id (SEARCH … USING INDEX — tree descent) and FULL SCAN filters by body (SCAN — every row); the verdict chip reads the plan so you do not have to, and a custom single SELECT is accepted (validated: SELECT-only, no semicolons — it is a read-only demo handle). The curl block replays both endpoints from a terminal.`,
-        },
-        {
-          kind: 'demo',
-          id: 'db-schema-live:explorer-demo',
-          demoId: 'db:schema-explorer',
-          title: 'The schema explorer',
-          description:
-            'Live introspection of the demo handle: posts + comments with columns/constraints, index badges (origin: explicit, unique, or pk), the FK with its ON DELETE CASCADE, and a query-plan panel contrasting an indexed SEARCH with a full SCAN via EXPLAIN QUERY PLAN.',
+          body: `The explorer (in the Indexes section above) introspects a DEDICATED in-memory SQLite handle (never the guide's real guide.db — the demo builds its own, seeded with the real posts). Everything it renders comes from SQLite itself: tables and their DDL from sqlite_master, columns and nullability and defaults from PRAGMA table_info, indexes and their origin (explicit 'c', UNIQUE 'u', primary-key 'pk') from PRAGMA index_list + index_info, foreign keys with their ON DELETE policy from PRAGMA foreign_key_list, and live row counts. Read the COMMENTS card against everything above: the INTEGER PRIMARY KEY rowid alias, the post_id FK with CASCADE, the CHECK on body, the strftime DEFAULT, and idx_comments_post_id — then compare it with the POSTS card's automatic pk-origin index. The FK ENFORCEMENT chip reports the per-connection PRAGMA state this topic warned about — ON here, because the demo handle turns it on when it opens. The query-plan endpoints run EXPLAIN QUERY PLAN against the same handle: INDEXED LOOKUP filters by post_id (SEARCH … USING INDEX — tree descent) and FULL SCAN filters by body (SCAN — every row); the preset reads the plan so you do not have to, and a custom single SELECT is accepted (validated: SELECT-only, no semicolons — it is a read-only demo handle). The curl block below replays both endpoints from a terminal.`,
         },
         {
           kind: 'code',

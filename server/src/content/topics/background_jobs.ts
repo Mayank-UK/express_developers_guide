@@ -231,6 +231,14 @@ private backoffDelayMs(attempt: number): number {
 // The demo base is 300ms so the ladder is watchable: retries land at ~300ms
 // and ~600ms (± 20%). Real-world base is seconds — 1000 gives 1s / 2s / 4s.`,
         },
+        {
+          kind: 'demo',
+          id: 'jobs-retries:console-demo',
+          demoId: 'jobs:console',
+          title: 'The job console: watch work retry, die, and live again',
+          description:
+            'Real endpoints — enqueue welcome/flaky/poison emails and watch status chips walk queued → running → succeeded or dead, with the retry backoff delays rendered in each job\u2019s history timeline; dead jobs get a REQUEUE button; the scheduler toggle feeds report jobs onto the board with a source badge; the stats strip tracks depth and oldest-job age.',
+        },
       ],
     },
     {
@@ -481,22 +489,14 @@ stats(): JobQueueStats {
     },
     {
       id: 'jobs-live',
-      title: 'See it live (the watchable queue)',
+      title: 'The watchable queue from a terminal',
       lead:
-        'One demo over the real endpoints: enqueue emails with injected temperaments, watch them retry with visible backoff, dead-letter, replay — and flip the scheduler on.',
+        'The whole lifecycle from a terminal (the interactive console lives in the Retries and backoff section above): enqueue emails with injected temperaments, watch them retry with visible backoff, dead-letter, replay — and flip the scheduler on.',
       blocks: [
         {
           kind: 'text',
           id: 'jobs-live:intro',
-          body: `THE CONSOLE is the queue's whole lifecycle on one screen, polling GET /api/demo/jobs and /stats every second. Three ENQUEUE buttons cover the three temperaments: WELCOME (succeeds first try — the boring case that pays the bills), FLAKY (forceFailures: 2 — fails twice on purpose, then succeeds; its history timeline is the retry ladder with the actual backoff delays rendered, ~300ms then ~600ms ± jitter), and POISON (alwaysFail — rides the ladder all the way to the dead-letter). Each JOB CARD carries a status chip (queued, running, succeeded, dead — color-coded), the attempt counter (attempts/maxAttempts), and an expandable HISTORY TIMELINE: every event with its timestamp, and every retry_scheduled with its delayMs — the backoff curve as text. Dead cards grow a REQUEUE button: click it and watch the replayed job run the ladder again with a fresh budget, its old history intact below the requeued marker. THE SCHEDULER TOGGLE posts {running: true/false} — scheduler-enqueued report jobs appear on the board with a source badge and a tick number, so you can watch a cron feed a queue in real time. The STATS STRIP (queued/running/succeeded/dead + the oldest queued job's age) is the observability section made small — stare at it while enqueueing poison emails and you are doing queue operations. CLEAR resets the board and switches the scheduler off. The curl block does the same tour from a terminal — enqueue a flaky email, poll its history until the succeeded entry, meet the dead-letter, requeue it, and read the stats the alerting rules would consume.`,
-        },
-        {
-          kind: 'demo',
-          id: 'jobs-live:console-demo',
-          demoId: 'jobs:console',
-          title: 'The job console: watch work retry, die, and live again',
-          description:
-            'Real endpoints — enqueue welcome/flaky/poison emails and watch status chips walk queued → running → succeeded or dead, with the retry backoff delays rendered in each job\u2019s history timeline; dead jobs get a REQUEUE button; the scheduler toggle feeds report jobs onto the board with a source badge; the stats strip tracks depth and oldest-job age.',
+          body: `THE CONSOLE (in the Retries and backoff section above) is the queue's whole lifecycle on one screen, polling GET /api/demo/jobs and /stats every second. Three ENQUEUE buttons cover the three temperaments: WELCOME (succeeds first try — the boring case that pays the bills), FLAKY (forceFailures: 2 — fails twice on purpose, then succeeds; its history timeline is the retry ladder with the actual backoff delays rendered, ~300ms then ~600ms ± jitter), and POISON (alwaysFail — rides the ladder all the way to the dead-letter). Each JOB CARD carries a status chip (queued, running, succeeded, dead — color-coded), the attempt counter (attempts/maxAttempts), and an expandable HISTORY TIMELINE: every event with its timestamp, and every retry_scheduled with its delayMs — the backoff curve as text. Dead cards grow a REQUEUE button: click it and watch the replayed job run the ladder again with a fresh budget, its old history intact below the requeued marker. THE SCHEDULER TOGGLE posts {running: true/false} — scheduler-enqueued report jobs appear on the board with a source badge and a tick number, so you can watch a cron feed a queue in real time. The STATS STRIP (queued/running/succeeded/dead + the oldest queued job's age) is the observability section made small — stare at it while enqueueing poison emails and you are doing queue operations. CLEAR resets the board and switches the scheduler off. The curl block does the same tour from a terminal — enqueue a flaky email, poll its history until the succeeded entry, meet the dead-letter, requeue it, and read the stats the alerting rules would consume.`,
         },
         {
           kind: 'code',

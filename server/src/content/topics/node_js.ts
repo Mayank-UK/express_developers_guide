@@ -90,6 +90,14 @@ await new Promise<void>((resolve) => setImmediate(resolve));`,
           id: 'node-loop:rule',
           body: `The golden rule follows directly from the architecture: never block the loop. The loop is cooperative — your callback runs to completion, and nothing else in the process runs JavaScript until it returns. A handler that returns in two milliseconds keeps ten thousand connections smooth; a handler that computes for three hundred milliseconds pauses the entire server for three hundred milliseconds — health checks time out, load balancers mark the instance dead, every user waits. And "blocking" is not exotic: a *Sync fs call, JSON.parse of a hundred-megabyte payload, a naive regex over hostile input, a tight hash loop — anything that owns the single thread counts.\n\nNode can even measure violations: perf_hooks.monitorEventLoopDelay records the real gaps between loop turns. The demo below uses a simpler probe — a setImmediate callback scheduled before the work starts, timed when it finally fires — which is exactly the stall your other requests would have felt.`,
         },
+        {
+          kind: 'demo',
+          id: 'node-loop:demo-loop',
+          demoId: 'node:event-loop',
+          title: 'Event-loop blocking, measured live',
+          description:
+            'Run 300ms of real hash work two ways — one synchronous burst (the loop stalls for the whole run) and one deferred across ticks (the loop stays responsive) — and read the measured stall from both responses.',
+        },
       ],
     },
     {
@@ -189,6 +197,14 @@ res.set('x-payload-raw-bytes', String(Buffer.byteLength(raw)));`,
 streamFileToResponse(res, absolutePath, requestId); // error-guarded source→sink
 // …and a Range slice, 206 + exactly the requested bytes:
 //   streamFileToResponse(res, absolutePath, requestId, { start, end });`,
+        },
+        {
+          kind: 'demo',
+          id: 'node-streams:demo-stream',
+          demoId: 'node:streaming',
+          title: 'Buffered vs streamed responses',
+          description:
+            'Download the same 100-line telemetry payload as one buffered body (Content-Length declared up front) and as a chunked stream (no Content-Length, bytes flow as they are produced) — client-observed timing and headers for both.',
         },
       ],
     },
@@ -486,13 +502,13 @@ export function forkNodeModule(modulePath: string, job: Serializable): ChildProc
     },
     {
       id: 'node-live',
-      title: 'See it live',
-      lead: 'Two experiments against this very server: one that blocks the loop and one that streams instead of buffering.',
+      title: 'Run the experiments from a terminal',
+      lead: 'The same two experiments, no browser needed: curl the very endpoints the interactive demos above drive.',
       blocks: [
         {
           kind: 'text',
           id: 'node-live:intro',
-          body: `The first experiment runs the same 300ms of real hash work two ways. The blocking endpoint computes it all in one synchronous burst — the event loop stalls for the entire run, and the response reports the measured stall, which is exactly the delay every other request experienced. The deferred endpoint does the same work in ~10ms slices handed back across setImmediate ticks: same total CPU, but the loop stayed free between slices, so its measured stall stays tiny. Fire both at once and you can also watch the blocking run inflate the deferred one's total time — one process, one loop, one point of congestion.\n\nThe second experiment serves the same telemetry payload two ways: buffered (the whole body built first, Content-Length known up front) and streamed (line by line, chunked transfer encoding, no Content-Length). Same bytes, different delivery contracts.`,
+          body: `The interactive versions live in their sections above — the blocking-vs-deferred stall in "The event loop", the buffered-vs-streamed delivery in "Buffers and streams" — and the curl block below drives the same endpoints from a terminal.\n\nThe first experiment runs the same 300ms of real hash work two ways. The blocking endpoint computes it all in one synchronous burst — the event loop stalls for the entire run, and the response reports the measured stall, which is exactly the delay every other request experienced. The deferred endpoint does the same work in ~10ms slices handed back across setImmediate ticks: same total CPU, but the loop stayed free between slices, so its measured stall stays tiny. Fire both at once and you can also watch the blocking run inflate the deferred one's total time — one process, one loop, one point of congestion.\n\nThe second experiment serves the same telemetry payload two ways: buffered (the whole body built first, Content-Length known up front) and streamed (line by line, chunked transfer encoding, no Content-Length). Same bytes, different delivery contracts.`,
         },
         {
           kind: 'code',
@@ -508,22 +524,6 @@ curl -s 'localhost:4000/api/demo/node/deferred?workMs=300'
 # Identical telemetry payloads, two delivery strategies — compare the headers:
 curl -sD - -o /dev/null 'localhost:4000/api/demo/node/stream?mode=buffered&chunks=50'
 curl -sD - -o /dev/null 'localhost:4000/api/demo/node/stream?mode=stream&chunks=50'`,
-        },
-        {
-          kind: 'demo',
-          id: 'node-live:demo-loop',
-          demoId: 'node:event-loop',
-          title: 'Event-loop blocking, measured live',
-          description:
-            'Run 300ms of real hash work two ways — one synchronous burst (the loop stalls for the whole run) and one deferred across ticks (the loop stays responsive) — and read the measured stall from both responses.',
-        },
-        {
-          kind: 'demo',
-          id: 'node-live:demo-stream',
-          demoId: 'node:streaming',
-          title: 'Buffered vs streamed responses',
-          description:
-            'Download the same 100-line telemetry payload as one buffered body (Content-Length declared up front) and as a chunked stream (no Content-Length, bytes flow as they are produced) — client-observed timing and headers for both.',
         },
       ],
     },

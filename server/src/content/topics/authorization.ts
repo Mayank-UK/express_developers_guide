@@ -118,6 +118,14 @@ authzDemoRouter.post(
   createDocumentController,
 );`,
         },
+        {
+          kind: 'demo',
+          id: 'authz-rbac:matrix-demo',
+          demoId: 'authz:matrix',
+          title: 'The access checker: every action, every identity, real verdicts',
+          description:
+            'Act as alice/bob/carol (one-click real logins), then fire view/patch/delete at every owned document and watch the guards answer — 200 where allowed, 403 chips naming requiredPermission, 401 when anonymous. A create form (owner = the caller, decided server-side) and the roles×permissions matrix rendered from /catalog with the current row highlighted.',
+        },
       ],
     },
     {
@@ -298,22 +306,14 @@ it('an unknown id WITH authentication → 404, never 403 (a 403 would confirm th
     },
     {
       id: 'authz-live',
-      title: 'See it live (the permission matrix)',
+      title: 'The permission matrix from a terminal',
       lead:
-        'Act as alice, bob, or carol — then fire every action at every document and watch the guards answer: 200s where the table allows, 403s that name the required permission, 401s before you log in. The matrix panel shows the exact table the middleware enforces.',
+        'The access checker now lives in the RBAC section above. This closing section is the terminal companion: the same matrix driven by curl — through the session cookie, the API key, and the Bearer JWT alike, which is exactly how the resolver sees every caller.',
       blocks: [
         {
           kind: 'text',
           id: 'authz-live:intro',
-          body: `ACT-AS STRIP: three one-click buttons log you in as alice/bob/carol through the REAL /api/demo/auth/login endpoint (the fixed teaching password), setting the session cookie every later call rides — the same login flow the authentication topic's demo completed, now driving authorization decisions. The identity card shows who you are and which credential schemes are in play. DOCUMENTS BOARD: the seeded documents, each with its OWNER badge, and per document the three try-it buttons — VIEW (GET the document), PATCH (a real edit request), DELETE — firing the true calls with the CURRENT identity. Results render as chips: 200 OK (with what changed), 401 (fire one before logging in), and 403 chips that NAME the requiredPermission (and, for the object-level checks, the document's owner) — the envelope details made visible. The CREATE form posts a new document and it appears with YOU as the owner (the server decides the owner; the form has no field for it). The board is the full matrix in ~10 clicks: act as carol and try to delete alice's architecture overview (403, documents:delete), act as bob and patch it (200 — the editor rule), act as alice and delete bob's runbook (200 — admin outranks ownership), act as nobody and watch everything 401. MATRIX PANEL: the roles×permissions table rendered from GET /catalog — the DERIVED catalog, so what you read is what the middleware enforces — with the current user's row highlighted, plus the ownership rule spelled out so carol-editing-her-own is never a surprise. The curl block below drives the same matrix from a terminal, including the API-key and Bearer paths.`,
-        },
-        {
-          kind: 'demo',
-          id: 'authz-live:matrix-demo',
-          demoId: 'authz:matrix',
-          title: 'The access checker: every action, every identity, real verdicts',
-          description:
-            'Act as alice/bob/carol (one-click real logins), then fire view/patch/delete at every owned document and watch the guards answer — 200 where allowed, 403 chips naming requiredPermission, 401 when anonymous. A create form (owner = the caller, decided server-side) and the roles×permissions matrix rendered from /catalog with the current row highlighted.',
+          body: `THE TERMINAL MATRIX, top to bottom. Start from the POLICY itself: GET /catalog serves the RBAC table AS DATA — the derived catalog the checker's matrix renders above, so what you read is what the middleware enforces. Log in as carol (viewer) with a cookie jar, then walk the verdicts: reading the document list passes (documents:read she has); creating one is the 403 envelope that NAMES documents:write beside her actual permission set — a 403 you can fix, not a shrug; patching her OWN document passes on ownership alone (the object-level check beating the missing role permission); and patching alice's is the same check failing — IDOR, defended, with documentId and owner in the details. SWITCH IDENTITY BY HEADER instead of cookie: alice's API key deleting bob's runbook (documents:delete outranks ownership), then a freshly issued Bearer JWT for bob editing alice's document under the editor rule — three credential families, one resolver, one identity shape, which is the whole point of the guard. End on the FAILURE ORDER the specs pin: an unknown id with no credential is 401 (authenticate first), with one it is 404 — never a 403 that would confirm the id exists. The interactive checker above renders these same verdicts as chips; this block is the script's-eye view of the identical guards.`,
         },
         {
           kind: 'code',

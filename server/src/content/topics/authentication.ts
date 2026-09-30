@@ -209,6 +209,14 @@ export function constantTimeEquals(candidate: string, expected: string): boolean
           id: 'auth-login-flow:catalog',
           body: `THE LIBRARY CATALOG, one honest paragraph: EXPRESS-SESSION is the ecosystem's standard session middleware — it implements exactly this model (a store, a cookie, a lookup per request) with pluggable stores (MemoryStore for dev, connect-redis for production) and sane cookie defaults. This guide hand-rolls the same machine because the MECHANISM is the curriculum — but reaching for express-session + a Redis store in a real app is a good default, not a compromise. PASSPORT (and its modern successor) is the strategy pattern for the LOGIN STEP — local, OAuth, OIDC, SAML plug in behind one API — and Part 2 covers it. What no library replaces: the discipline that the password compare is constant-time, the cookie carries HttpOnly/Secure/SameSite, the token never appears in a body, and logout actually deletes server-side state. Those four are the review checklist; this app does all four where you can watch.`,
         },
+        {
+          kind: 'demo',
+          id: 'auth-login-flow:sessions-demo',
+          demoId: 'auth:sessions',
+          title: 'The login flow, completed for real',
+          description:
+            'Pick a demo user (password prefilled — it is the teaching password), log in, then prove the session via /me, list the active server-side sessions (masked tokens, who, when), and log out to watch the 401s arrive. HttpOnly means the page cannot read the cookie — /me is the proof.',
+        },
       ],
     },
     {
@@ -256,6 +264,14 @@ function apiAdminController(req: Request, res: Response): void {
     // …note: the success line that names the scope…
   });
 }`,
+        },
+        {
+          kind: 'demo',
+          id: 'auth-api-keys:keys-demo',
+          demoId: 'auth:api-keys',
+          title: 'API keys and scope checking',
+          description:
+            'The three fixed demo keys as selectable cards with their scopes; call /api-protected (any valid key) and /api-admin (needs admin:demos — watch bob\'s valid key earn a 403 naming the missing scope). A per-key curl snippet shows the exact terminal command.',
         },
         {
           kind: 'code',
@@ -378,6 +394,14 @@ export function verifyJwt(
   }
   /* … claims shape checks, then ok({ payload }) … */
 }`,
+        },
+        {
+          kind: 'demo',
+          id: 'auth-jwt:jwt-demo',
+          demoId: 'auth:jwt',
+          title: 'The JWT workbench: issue, dissect, forge, expire',
+          description:
+            'Issue an HS256 token for a demo user and read its three segments (header / payload decoded in the page — signed is not encrypted). Verify it against the server, flip TAMPER to forge the claims under an unchanged signature (verdict: signature mismatch), issue a 2-second token and watch the countdown reach "token expired", and call the Bearer-protected endpoint with the good and the forged token.',
         },
         {
           kind: 'code',
@@ -534,6 +558,14 @@ if (!clientKnown) {
     },
   };
 }`,
+        },
+        {
+          kind: 'demo',
+          id: 'auth-oauth:oauth-demo',
+          demoId: 'auth:oauth',
+          title: 'The authorization-code flow, end to end against the local provider',
+          description:
+            'Start the flow → the provider\'s real consent page (pick alice/bob/carol, approve or deny) → the callback renders the four acts as numbered steps: redirect received, single-use code, back-channel exchange (token masked, secret never in the browser), and the userinfo identity. Deny renders the access_denied state.',
         },
         {
           kind: 'code',
@@ -811,45 +843,13 @@ curl -s -X POST localhost:4000/api/demo/auth/refresh/rotate \\
     },
     {
       id: 'auth-live',
-      title: 'See it live (sessions, keys, JWTs, OAuth)',
-      lead: 'All four credential families, completed for real in the UI: log in and prove the session cookie; select an API key and watch a scope check fail; dissect, forge, and expire a JWT in the verifier; then run the full OAuth redirect dance — consent page, single-use code, back-channel exchange, userinfo — against the local provider.',
+      title: 'The credential tour from a terminal (sessions, keys, JWTs, OAuth)',
+      lead: 'The interactive panels live where their families are taught — the login flow, the key cards, the JWT workbench, and the OAuth dance, each beside its section above. This closing section is the terminal companion: the full session tour by curl, the way a script or a CI pipeline would drive it.',
       blocks: [
         {
           kind: 'text',
           id: 'auth-live:intro',
-          body: `SESSIONS PANEL: the user picker lists the three demo identities (the shared password rides along — completing the flow is the point). LOGIN posts the credentials, sets the HttpOnly cookie, and renders the identity card — note the demo CANNOT show you the cookie itself: browser fetch hides Set-Cookie from JavaScript, and HttpOnly hides it from the page even if it tried — so the panel proves the session the honest way, by calling /me and rendering who the cookie says you are. ME re-checks the session (401 envelope when logged out — try it after LOGOUT); SESSIONS lists the ACTIVE server-side sessions with masked tokens, who, and when they expire — open the guide in a second tab, log in as another user, and watch the list grow; LOGOUT destroys the session and clears the cookie, after which every ME is a 401. API-KEYS PANEL: the three keys as selectable cards (copyable, with their scope chips). CALL /api-protected sends the selected key in the x-api-key header — any valid key answers 200 with the identity and scopes; CALL /api-admin additionally demands the admin:demos scope: alice answers 200, bob answers the 403 forbidden envelope naming the missing scope, and the response panel renders the envelope either way. JWT WORKBENCH: pick a user, ISSUE a token, and read its three colored segments — the decoded header, the decoded payload (claims in plain sight: signed is not encrypted), and the signature (binary — not JSON). VERIFY asks the server's verdict (200 both ways — the reason IS the lesson); the TAMPER toggle rewrites the payload's claims (sub becomes admin) while keeping the signature, and VERIFY answers "signature mismatch"; ISSUE 2-SECOND TOKEN arms a countdown you can watch hit zero before VERIFY returns "token expired"; CALL jwt-protected sends the token as a Bearer header — 200 identity, or the 401 envelope once tampered/expired. OAUTH FLOW: START THE FLOW redirects your browser to the local provider's consent page (act I–II, real HTML); approve or deny as a demo user, land on the callback, and the four acts render as numbered steps — the redirect received (code + state), the back-channel exchange (token masked), and the userinfo identity your Bearer call returned. Deny, and the callback renders the access_denied state instead. The curl blocks drive all four families from a terminal.`,
-        },
-        {
-          kind: 'demo',
-          id: 'auth-live:sessions-demo',
-          demoId: 'auth:sessions',
-          title: 'The login flow, completed for real',
-          description:
-            'Pick a demo user (password prefilled — it is the teaching password), log in, then prove the session via /me, list the active server-side sessions (masked tokens, who, when), and log out to watch the 401s arrive. HttpOnly means the page cannot read the cookie — /me is the proof.',
-        },
-        {
-          kind: 'demo',
-          id: 'auth-live:keys-demo',
-          demoId: 'auth:api-keys',
-          title: 'API keys and scope checking',
-          description:
-            'The three fixed demo keys as selectable cards with their scopes; call /api-protected (any valid key) and /api-admin (needs admin:demos — watch bob\'s valid key earn a 403 naming the missing scope). A per-key curl snippet shows the exact terminal command.',
-        },
-        {
-          kind: 'demo',
-          id: 'auth-live:jwt-demo',
-          demoId: 'auth:jwt',
-          title: 'The JWT workbench: issue, dissect, forge, expire',
-          description:
-            'Issue an HS256 token for a demo user and read its three segments (header / payload decoded in the page — signed is not encrypted). Verify it against the server, flip TAMPER to forge the claims under an unchanged signature (verdict: signature mismatch), issue a 2-second token and watch the countdown reach "token expired", and call the Bearer-protected endpoint with the good and the forged token.',
-        },
-        {
-          kind: 'demo',
-          id: 'auth-live:oauth-demo',
-          demoId: 'auth:oauth',
-          title: 'The authorization-code flow, end to end against the local provider',
-          description:
-            'Start the flow → the provider\'s real consent page (pick alice/bob/carol, approve or deny) → the callback renders the four acts as numbered steps: redirect received, single-use code, back-channel exchange (token masked, secret never in the browser), and the userinfo identity. Deny renders the access_denied state.',
+          body: `THE TERMINAL TOUR, TOP TO BOTTOM. (1) Fetch the public identity list — the teaching password rides along, deliberately, exactly like the API keys do. (2) Log in as alice with -i and read the Set-Cookie header BY HAND: guide_session=<43-char-token>; Path=/; HttpOnly; SameSite=Lax — the attributes the cookies section decoded, on the wire. (3) Let the cookie jar do what browsers do automatically (-c saves the jar, -b sends it) and prove the session via /me: the identity card in JSON, the token masked everywhere. List the ACTIVE server-side sessions next — masked tokens, who, when they expire — and open a second jar as another user to watch the list grow. (4) The two failure shapes: a wrong password answers the 401 envelope with ONE message for both failure modes (no username enumeration), and LOGOUT ends the tour the honest way — the store entry is deleted, the clearing cookie is set with mirrored attributes, and the very next /me is a 401: revocation is DELETE, visible from a terminal. THE OTHER THREE FAMILIES have their own curl blocks in their sections above — the key tour (including the 403 that names the missing scope), the token tour (the forgery, the two-second expiry), and the OAuth four-acts script (the replay and the wrong secret). Same endpoints, same envelopes, one shell: the panels above render these families as a browser sees them, this block is the script's-eye view.`,
         },
         {
           kind: 'code',

@@ -164,6 +164,14 @@ ORDERING is guaranteed exactly as far as one stream, and no further. Redis deliv
   });
 }`,
         },
+        {
+          kind: 'demo',
+          id: 'messaging:consumer-groups:stream-demo',
+          demoId: 'msg:stream',
+          title: 'Stream console',
+          description:
+            'Produce to the Redis stream, consume as any named worker with ack and fail knobs, watch the pending-entries idle clock, reclaim a dead worker\'s message with XAUTOCLAIM, and walk a poison message into the dead-letter stream — every step against the real /api/demo/msg/stream endpoints. Needs the optional redis service; without it the endpoints answer the canonical 503 and say how to start it.',
+        },
       ],
     },
     {
@@ -431,6 +439,14 @@ export async function runRelay(
     published.push({ outboxId: row.id, topic: row.topic, entryId, alreadyDelivered, markedPublished: marked });
   }`,
         },
+        {
+          kind: 'demo',
+          id: 'messaging:outbox:outbox-demo',
+          demoId: 'msg:outbox',
+          title: 'Outbox console',
+          description:
+            'The transactional outbox end to end: enqueue a post update and its event row in one transaction (or crash between the writes and watch both roll back), run the relay to ship due rows, crash after publish and re-run to deliver the at-least-once duplicate, then dedupe by outbox id — against the real /api/demo/msg/outbox endpoints. The ledger always works (pure sqlite); publishing needs the optional redis service.',
+        },
       ],
     },
     {
@@ -479,22 +495,14 @@ async function existingDeliveries(client: Redis, outboxId: number): Promise<numb
     },
     {
       id: 'messaging:live',
-      title: 'See it live',
+      title: 'Drive the stream and outbox from a terminal',
       lead:
-        'Two consoles over the real endpoints: the stream lab walks produce, consume, pending, reclaim and the DLQ with every Redis command visible in the responses; the outbox exhibit walks enqueue, relay, crash-after-publish, and the duplicate\u2019s recovery.',
+        'Both consoles driven from a terminal (the interactive panels live in the Consumer groups and transactional-outbox sections above): the stream lab walks produce, consume, pending, reclaim and the DLQ with every Redis command visible in the responses; the outbox exhibit walks enqueue, relay, crash-after-publish, and the duplicate\u2019s recovery.',
       blocks: [
         {
           kind: 'text',
           id: 'messaging:live:stream-intro',
-          body: `THE STREAM CONSOLE is the lab's whole lifecycle over the real endpoints under /api/demo/msg/. PRODUCE appends with XADD — the minted <ms>-<seq> id and the stream length come back in the 201. CONSUME runs one worker pass with three knobs: a consumer name (any string — this is how you impersonate worker-2), ack false to process-and-not-acknowledge (the crash-before-ack lesson; one PEL entry appears), and fail true to fail processing on purpose (watch the requeued outcome carry retryCount+1, then the dead-lettered outcome on the third strike). PENDING renders XPENDING's two views — the per-consumer summary, then one row per entry with the idle clock ticking. RECLAIM posts XAUTOCLAIM with a minimum idle you choose and shows the takeover: entries moved to a live consumer, delivery counts incremented, acks closed. DLQ lists the dead-letter stream — original ids, payloads, reasons. INFO is XINFO's honest two numbers: stream length plus each group's pending count and last-delivered id, which is how you answer "are consumers keeping up?". RESET hands the next run a virgin lab, and the curl block does the same tour from a terminal.`,
-        },
-        {
-          kind: 'demo',
-          id: 'messaging:live:stream-demo',
-          demoId: 'msg:stream',
-          title: 'Stream console',
-          description:
-            'Produce to the Redis stream, consume as any named worker with ack and fail knobs, watch the pending-entries idle clock, reclaim a dead worker\'s message with XAUTOCLAIM, and walk a poison message into the dead-letter stream — every step against the real /api/demo/msg/stream endpoints. Needs the optional redis service; without it the endpoints answer the canonical 503 and say how to start it.',
+          body: `THE STREAM CONSOLE (in the Consumer groups section above) is the lab's whole lifecycle over the real endpoints under /api/demo/msg/. PRODUCE appends with XADD — the minted <ms>-<seq> id and the stream length come back in the 201. CONSUME runs one worker pass with three knobs: a consumer name (any string — this is how you impersonate worker-2), ack false to process-and-not-acknowledge (the crash-before-ack lesson; one PEL entry appears), and fail true to fail processing on purpose (watch the requeued outcome carry retryCount+1, then the dead-lettered outcome on the third strike). PENDING renders XPENDING's two views — the per-consumer summary, then one row per entry with the idle clock ticking. RECLAIM posts XAUTOCLAIM with a minimum idle you choose and shows the takeover: entries moved to a live consumer, delivery counts incremented, acks closed. DLQ lists the dead-letter stream — original ids, payloads, reasons. INFO is XINFO's honest two numbers: stream length plus each group's pending count and last-delivered id, which is how you answer "are consumers keeping up?". RESET hands the next run a virgin lab, and the curl block does the same tour from a terminal.`,
         },
         {
           kind: 'code',
@@ -543,15 +551,7 @@ curl -s -X POST localhost:4000/api/demo/msg/stream/reset -H 'content-type: appli
         {
           kind: 'text',
           id: 'messaging:live:outbox-intro',
-          body: `THE OUTBOX CONSOLE walks the second artifact end to end. ENQUEUE renames a seeded post and writes its event row in ONE transaction — with a crash toggle that throws between the two writes and rolls BOTH back (enqueued false, the ledger count unchanged: the dual-write problem solved, then re-broken on purpose so you see both states). The LEDGER is the outbox table itself: published_at NULL means "the relay owes this"; attempts and next_attempt_at are the relay's own retry state. RELAY runs one pass, with two independent lessons on toggles — crashAfterPublish dies between publish and mark (the row stays due; run the relay again plainly and the duplicate ships, alreadyDelivered true, two stream entries sharing one outbox id), and failPublish simulates the broker down before any publish (attempts increments, backoff pushes the next attempt out, and an immediate re-run ships nothing). THE STREAM view is where the duplicate becomes visible — and the recovery, dedupe by outbox id, is the idempotent-consumer section running live.`,
-        },
-        {
-          kind: 'demo',
-          id: 'messaging:live:outbox-demo',
-          demoId: 'msg:outbox',
-          title: 'Outbox console',
-          description:
-            'The transactional outbox end to end: enqueue a post update and its event row in one transaction (or crash between the writes and watch both roll back), run the relay to ship due rows, crash after publish and re-run to deliver the at-least-once duplicate, then dedupe by outbox id — against the real /api/demo/msg/outbox endpoints. The ledger always works (pure sqlite); publishing needs the optional redis service.',
+          body: `THE OUTBOX CONSOLE (in the transactional-outbox section above) walks the second artifact end to end. ENQUEUE renames a seeded post and writes its event row in ONE transaction — with a crash toggle that throws between the two writes and rolls BOTH back (enqueued false, the ledger count unchanged: the dual-write problem solved, then re-broken on purpose so you see both states). The LEDGER is the outbox table itself: published_at NULL means "the relay owes this"; attempts and next_attempt_at are the relay's own retry state. RELAY runs one pass, with two independent lessons on toggles — crashAfterPublish dies between publish and mark (the row stays due; run the relay again plainly and the duplicate ships, alreadyDelivered true, two stream entries sharing one outbox id), and failPublish simulates the broker down before any publish (attempts increments, backoff pushes the next attempt out, and an immediate re-run ships nothing). THE STREAM view is where the duplicate becomes visible — and the recovery, dedupe by outbox id, is the idempotent-consumer section running live.`,
         },
         {
           kind: 'code',

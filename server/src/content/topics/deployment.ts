@@ -222,6 +222,14 @@ CMD ["nginx", "-g", "daemon off;"]`,
           id: 'deploy-compose:when-you-outgrow',
           body: `WHEN YOU OUTGROW COMPOSE — one honest paragraph. Compose runs one host's containers and restarts them when they die; it does not schedule across machines, does not replace an unhealthy node with a healthy one elsewhere, does not roll a new version one replica at a time while probing readiness, and its \`scale\` cannot spread replicas over hosts. The moment you need any of that — multiple machines, rolling deploys, autoscaling, service discovery beyond one DNS domain — you need an orchestrator: Docker's own Swarm mode (compose-like syntax, multi-host, increasingly niche) or Kubernetes (the industry default: pods of containers, Deployments that roll replicas with readiness gates, Services/Ingress doing what the nginx front door does here). This guide teaches compose FIRST because every concept transfers: the image becomes a pod spec, the compose network becomes a Kubernetes Service, the restart policy becomes a Deployment's reconciliation loop, and the healthcheck becomes liveness/readiness probes — and then the Kubernetes section ahead walks those exact translations over the real manifests this repo ships (deploy/k8s/). Learn the small one first and the big one is vocabulary, not a new religion.`,
         },
+        {
+          kind: 'demo',
+          id: 'deploy-compose:demo',
+          demoId: 'deploy:stack',
+          title: 'The stack explorer',
+          description:
+            'Live process facts from the server answering you, the browser origin you reached it through, and the services declared by this repo\u2019s two compose files — parsed off disk, put side by side.',
+        },
       ],
     },
     {
@@ -803,14 +811,14 @@ scp .docker/docker-compose-prod.yml deploy@guide.example.test:~/`,
     },
     {
       id: 'deploy-see-it-live',
-      title: 'See it live',
+      title: 'The stack explorer from a terminal',
       lead:
-        'The stack explorer: the live process facts of the server answering you, beside the services your repo declares — then boot the real prod stack yourself.',
+        'The live process facts of the server answering you, beside the services your repo declares (the interactive explorer lives in the Compose section above) — then boot the real prod stack yourself, all from a terminal.',
       blocks: [
         {
           kind: 'text',
           id: 'deploy-see-it-live:what-you-see',
-          body: `THE DEMO is the "you are running inside the deployed thing" moment. GET /api/demo/deploy/stack answers with the LIVE process facts — the pid, the Node version, the environment, the uptime, the RSS — of the very server rendering this page, plus the browser origin you reached it through (Vite's dev proxy on :5173, the prod nginx on :8080, or a direct :4000 hit — each tells a different deployment story), and the services DECLARED by this repo's two compose files, parsed live off disk with a tolerant two-space-indent heuristic. The panel puts DECLARED beside LIVE: the declared stack is what the orchestrator was told; the live facts are what actually runs — deployment is the discipline of keeping those two columns identical. Watch the forwardedProto line in particular: through the shipped prod proxy it reads null, because the shipped nginx conf does not set X-Forwarded-Proto — the reverse-proxy section's gap, visible as data. Or drive it from a terminal — including the full prod boot this topic was proven with:`,
+          body: `THE STACK EXPLORER (in the Compose section above) is the "you are running inside the deployed thing" moment. GET /api/demo/deploy/stack answers with the LIVE process facts — the pid, the Node version, the environment, the uptime, the RSS — of the very server rendering this page, plus the browser origin you reached it through (Vite's dev proxy on :5173, the prod nginx on :8080, or a direct :4000 hit — each tells a different deployment story), and the services DECLARED by this repo's two compose files, parsed live off disk with a tolerant two-space-indent heuristic. The panel puts DECLARED beside LIVE: the declared stack is what the orchestrator was told; the live facts are what actually runs — deployment is the discipline of keeping those two columns identical. Watch the forwardedProto line in particular: through the shipped prod proxy it reads null, because the shipped nginx conf does not set X-Forwarded-Proto — the reverse-proxy section's gap, visible as data. Or drive it from a terminal — including the full prod boot this topic was proven with:`,
         },
         {
           kind: 'code',
@@ -833,14 +841,6 @@ docker compose -f .docker/docker-compose-prod.yml logs server | grep listening
 
 # and, when you are done — volumes persist on purpose (named volumes outlive down):
 docker compose -f .docker/docker-compose-prod.yml down`,
-        },
-        {
-          kind: 'demo',
-          id: 'deploy-see-it-live:demo',
-          demoId: 'deploy:stack',
-          title: 'The stack explorer',
-          description:
-            'Live process facts from the server answering you, the browser origin you reached it through, and the services declared by this repo\u2019s two compose files — parsed off disk, put side by side.',
         },
       ],
     },

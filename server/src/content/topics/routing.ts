@@ -21,7 +21,7 @@ export const topicRouting: Topic = {
         {
           kind: 'text',
           id: 'routing-what:concept',
-          body: `Concept first, framework-free: routing is a lookup. The server receives a request line — a method (GET, POST, …) and a path — and must decide which piece of code, if any, is responsible for answering. A router holds a table of rules, each rule pairing a method-and-pattern with a handler, and matches the incoming request against that table in registration order; the first rule that matches wins and its handler runs. If nothing matches, the request falls off the end of the table, and what happens then (usually a 404) is itself part of your contract.\n\nIt is worth internalizing that the route table IS the API. Clients do not see your controllers, your layers, or your database — they see the set of (method, path) pairs you answer, the shapes you accept and return, and the status codes you emit. Reading a well-organized route table tells you what a service does in ten seconds; that is why this guide keeps every router file small enough to be its own documentation, and why the live demo at the bottom of this screen renders this server's demo route table from a catalog the server serves about itself.`,
+          body: `Concept first, framework-free: routing is a lookup. The server receives a request line — a method (GET, POST, …) and a path — and must decide which piece of code, if any, is responsible for answering. A router holds a table of rules, each rule pairing a method-and-pattern with a handler, and matches the incoming request against that table in registration order; the first rule that matches wins and its handler runs. If nothing matches, the request falls off the end of the table, and what happens then (usually a 404) is itself part of your contract.\n\nIt is worth internalizing that the route table IS the API. Clients do not see your controllers, your layers, or your database — they see the set of (method, path) pairs you answer, the shapes you accept and return, and the status codes you emit. Reading a well-organized route table tells you what a service does in ten seconds; that is why this guide keeps every router file small enough to be its own documentation, and why the live demo below renders this server's demo route table from a catalog the server serves about itself.`,
         },
         {
           kind: 'code',
@@ -40,6 +40,14 @@ postsRouter.route('/posts/:id').get(makeExpressCallback(postsControllers.detail)
 // declaration line: makeExpressCallback adapts the framework-free controller
 // behind it, and the domain does the work (see Routing at scale).`,
         },
+        {
+          kind: 'demo',
+          id: 'routing-what:demo',
+          demoId: 'routing:explorer',
+          title: 'The route explorer',
+          description:
+            'Fetch the server\u2019s own route catalog, then fire any row: edit the prefilled path (or the POST body), hit FIRE, and watch the status, elapsed time, matched-pattern echo, and response body come back. Unrouted paths fall through to the 404 catch-all envelope — visible right in the panel.',
+        },
       ],
     },
     {
@@ -57,7 +65,7 @@ postsRouter.route('/posts/:id').get(makeExpressCallback(postsControllers.detail)
           id: 'routing-methods-paths:patterns',
           language: 'ts',
           caption:
-            'server/src/presentation/routes/routing_demo_routes.ts — verbatim: the pattern zoo as really registered (the general forms they instance, in the comments; the live demo below runs them for real)',
+            'server/src/presentation/routes/routing_demo_routes.ts — verbatim: the pattern zoo as really registered (the general forms they instance, in the comments; the live demo above runs them for real)',
           source: 'server/src/presentation/routes/routing_demo_routes.ts',
           code: `// The pattern zoo, generalized (app.get('/posts') matches only /posts;
 // ':id' captures ONE segment and composes with literals; '*splat' captures
@@ -173,7 +181,7 @@ apiRouter.use(postsRouter);       // /api/posts…       (the layered pipeline)
         {
           kind: 'text',
           id: 'routing-routers:organization',
-          body: `Organization at scale follows from the mechanism: one file per resource, each exporting a router built top-to-bottom in the order matching should happen; one composition file (index.ts here) that mounts them; the app file that mounts the composition and owns the cross-cutting tail — 404 and error handling. A reader can then navigate from any URL to its handler in two hops: which mounted router's prefix matches, then which row in that router's table. The route-explorer demo below makes the same navigation visible live: its catalog endpoint is a router describing its own table as data.`,
+          body: `Organization at scale follows from the mechanism: one file per resource, each exporting a router built top-to-bottom in the order matching should happen; one composition file (index.ts here) that mounts them; the app file that mounts the composition and owns the cross-cutting tail — 404 and error handling. A reader can then navigate from any URL to its handler in two hops: which mounted router's prefix matches, then which row in that router's table. The route-explorer demo above makes the same navigation visible live: its catalog endpoint is a router describing its own table as data.`,
         },
       ],
     },
@@ -217,7 +225,7 @@ app.use(errorHandler);          // 5. error-handling middleware LAST — always`
         {
           kind: 'text',
           id: 'routing-order-404:fallthrough-live',
-          body: `You can trip this live in the demo below: edit any row's path to something the demo router does not define (or fire the prefilled incomplete path /projects/p1/tasks, which has no matching row because :taskId is missing) and you will see the fall-through in action — the request leaves the demo router, leaves the API router, and is answered by the app-level catch-all with the standard not_found envelope, not a bare HTML error page. One request, three tables searched, one deliberate answer.`,
+          body: `You can trip this live in the demo above: edit any row's path to something the demo router does not define (or fire the prefilled incomplete path /projects/p1/tasks, which has no matching row because :taskId is missing) and you will see the fall-through in action — the request leaves the demo router, leaves the API router, and is answered by the app-level catch-all with the standard not_found envelope, not a bare HTML error page. One request, three tables searched, one deliberate answer.`,
         },
       ],
     },
@@ -260,13 +268,13 @@ app.use('/api', apiRouter);
     },
     {
       id: 'routing-live',
-      title: 'See it live',
-      lead: 'A route explorer you can fire: the server serves a catalog of its own demo routes, and every response echoes which row matched.',
+      title: 'Tour the route table from a terminal',
+      lead: 'The route explorer\u2019s own endpoints, no browser needed: the catalog as data, a matched-pattern echo on every row, and the fall-through to the 404 catch-all.',
       blocks: [
         {
           kind: 'text',
           id: 'routing-live:intro',
-          body: `The demo below fetches /api/demo/routing/catalog and renders the returned route table — six rows covering a static path, method dispatch, a validated parameter, two parameters, a query string, and an Express 5 named wildcard. Each row has a prefilled, editable path: fire it and the panel shows the status, the elapsed milliseconds, and the response — which always starts with a matched echo naming the exact pattern that answered. Edit a path into something unrouted (try /api/demo/routing/projects/42 — the route matches, the boundary validation rejects it with a 400; or /api/demo/routing/projects/p1/tasks — nothing matches, and the app-level 404 catch-all answers) and the same panel shows the error envelope instead. Pattern, handler, validation, and fall-through: one table, every routing concept, live.`,
+          body: `The interactive route explorer lives in "What routing is" above; the curls below drive the same endpoints from a terminal. The catalog is the route table as data — six rows covering a static path, method dispatch, a validated parameter, two parameters, a query string, and an Express 5 named wildcard — and every response starts with a matched echo naming the exact pattern that answered. The middle curls fire the interesting rows: a named parameter echoed by the row that matched it, boundary validation rejecting /projects/42 with a 400 envelope (the route matched, the handler said no), query parsing with a default, and the named wildcard capturing a suffix as segments. The last curl is the fall-through: nothing matches, and the app-level 404 catch-all answers with the standard not_found envelope. Pattern, handler, validation, and fall-through: one table, every routing concept, live.`,
         },
         {
           kind: 'code',
@@ -290,14 +298,6 @@ curl -s localhost:4000/api/demo/routing/files/docs/readme.md
 
 # Nothing matched → the app-level 404 catch-all envelope:
 curl -s localhost:4000/api/demo/routing/nope`,
-        },
-        {
-          kind: 'demo',
-          id: 'routing-live:demo',
-          demoId: 'routing:explorer',
-          title: 'The route explorer',
-          description:
-            'Fetch the server\u2019s own route catalog, then fire any row: edit the prefilled path (or the POST body), hit FIRE, and watch the status, elapsed time, matched-pattern echo, and response body come back. Unrouted paths fall through to the 404 catch-all envelope — visible right in the panel.',
         },
       ],
     },

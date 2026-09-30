@@ -344,6 +344,14 @@ export class Loader<K, V> {
           body: `Introspection is a reserved, meta-fields surface (__schema, __type) the execution engine answers without your code: ask for __schema { queryType { name } } and the server describes itself — every type, field, argument, and deprecation, typed. This is not a nice-to-have: it is WHY the tooling story is uniformly good. GraphiQL and GraphQL Playground are in-browser editors that introspect your endpoint and then autocomplete field names, show inline type errors against the real schema, and one-click "docs" — the same contract powering client codegen (typed query results from .graphql files) and schema diffing in CI ("this release removed a field clients query" becomes a build failure). Point any generic GraphQL IDE at http://localhost:4000/api/graphql and it will draw this app's schema without reading our source.\n\nThe debate: an open introspection endpoint hands an attacker your complete API map — every field, every argument type — for one cheap query. The counterargument: it is reconnaissance convenience, not a vulnerability class; the fields an attacker can introspect are the fields they can already brute-force by guessing names (schemas are not guess-proof: type names like Post and User are not secrets), and security-by-obscurity buys nothing against the insider or the leaked schema file that every client build ships. The working consensus: DISABLE it on public, unauthenticated production endpoints (graphql-js: NoSchemaIntrospectionCustomRule passed to validate — one line in this app's handler would do it), KEEP it everywhere else (internal services, authenticated surfaces, every non-prod environment), and if public clients need tooling, serve them PERSISTED QUERIES instead — a registry of pre-approved documents the server only executes by hash, which simultaneously fixes introspection exposure, arbitrary-query cost abuse, and caching. This app leaves introspection ON deliberately — it is a teaching surface, and the playground below is a hand-rolled cousin of what introspection enables.`,
         },
         {
+          kind: 'demo',
+          id: 'graphql-introspection:playground-demo',
+          demoId: 'api:graphql-playground',
+          title: 'The GraphQL playground',
+          description:
+            'A mini query editor over the real POST /api/graphql endpoint: editable document and variables, two presets (the posts query; the createPost mutation with variables), a RUN button, and a response panel that renders data and errors separately with extensions.code chips — syntax, validation, partial-data, and injected-503 answers all visible.',
+        },
+        {
           kind: 'code',
           id: 'graphql-introspection:query',
           language: 'bash',
@@ -366,13 +374,13 @@ curl -s -X POST -H 'content-type: application/json' \\
     },
     {
       id: 'graphql-live',
-      title: 'See it live',
-      lead: 'A mini playground over the real endpoint: edit a query and variables, run them, and read the answer with data and errors rendered separately — plus the curl forms for your terminal.',
+      title: 'GraphQL from a terminal',
+      lead: 'The real endpoint with no editor in sight — the happy query, the partial-data answer beside an unknown id, and the injected failure as a GraphQL error: the three fastest experiments, envelopes typed by hand.',
       blocks: [
         {
           kind: 'text',
           id: 'graphql-live:intro',
-          body: `The playground posts to the SAME /api/graphql handler this topic walked, so everything above is reproducible in it: run the prefilled posts query, load the mutation preset (note the variables panel coming alive), then hand-edit the query to ask for more or fewer fields and watch the response mirror your edit — the client-shaped-shape claim, verified by your own hands. Break it on purpose, too: leave a brace unclosed (a 400 with a syntax error and a location you can find in the editor), rename a field that does not exist (a validation error quoting the real schema), or flip failure injection on in the REST workbench and re-run any query here — the same failure that answers 503 to REST arrives as an errors array with extensions.code service_unavailable, because both surfaces share one use case, one taxonomy, and one scenario store. The response panel separates data from errors and chips each error's code, so partial-data-plus-errors answers (query for an unknown post's field beside the healthy list) are legible at a glance.`,
+          body: `The playground now lives at the end of the introspection and tooling section above; this closing tour runs the same experiments with curl, which keeps the protocol honest — you type the { query, variables } envelope yourself, so nothing hides what is actually POSTed. Experiment one, the happy path: the posts query, and the response mirrors the requested shape field for field. Experiment two, partial data with errors: ask for an unknown post's title BESIDE the healthy list, and data comes back half-populated with an errors array carrying path and extensions.code not_found — null propagation, visible on the wire. Experiment three, the injected failure: flip the scenario on via the REST PATCH, re-run any query, and the same failure that answers 503 over REST arrives here as HTTP 200 with errors and extensions.code service_unavailable — one use case, one taxonomy, one scenario store behind both dialects. Pipe every answer through jq: the data/errors split is the first thing to inspect in any GraphQL response, and at a terminal it is impossible to miss.`,
         },
         {
           kind: 'code',
@@ -395,14 +403,6 @@ curl -s -X POST -H 'content-type: application/json' \\
   -d '{"query":"{ posts { id } }"}' localhost:4000/api/graphql | jq
 curl -s -X PATCH -H 'content-type: application/json' \\
   -d '{"injectFailure":false}' localhost:4000/api/demo/scenario > /dev/null`,
-        },
-        {
-          kind: 'demo',
-          id: 'graphql-live:playground-demo',
-          demoId: 'api:graphql-playground',
-          title: 'The GraphQL playground',
-          description:
-            'A mini query editor over the real POST /api/graphql endpoint: editable document and variables, two presets (the posts query; the createPost mutation with variables), a RUN button, and a response panel that renders data and errors separately with extensions.code chips — syntax, validation, partial-data, and injected-503 answers all visible.',
         },
       ],
     },

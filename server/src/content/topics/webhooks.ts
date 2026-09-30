@@ -25,7 +25,7 @@ export const topicWebhooks: Topic = {
         {
           kind: 'text',
           id: 'webhooks-reversed:inversion',
-          body: `A request-response API is PULL: the client decides WHEN, your server just answers. A webhook is PUSH: something happened in your system (a payment settled, a build finished, a post was created), and YOUR server now plays HTTP CLIENT — opening a connection to somebody else's URL and delivering the news as an HTTP request. The recipient's endpoint (their "webhook receiver") is the server in the conversation. That is the entire mechanism — no protocol, no library, just "I will POST JSON to the URL you registered" — and it is why webhooks are everywhere: they are the cheapest possible way to make two systems react to each other in near-real-time without polling.\n\nThe inversion swaps your obligations in ways that surprise request-mode thinking. YOU now care about THEIR availability: if their server 500s, the event still happened — you must retry, and you will learn exponential backoff and dead-letter queues the hard way. THEY cannot authenticate the way request-clients do (no API key in a login step): the request arrives from your servers at a URL they told you about, so proving "this really is Stripe calling" needs CRYPTOGRAPHY — the HMAC signatures this topic is largely about. THEIR endpoint is now PUBLIC attack surface answering unauthenticated traffic, and it must be ONLINE even when its own app is half-broken — hence the acknowledge-fast-then-process-async pattern. And DEBUGGING inverts: when a webhook "doesn't work", the evidence is on the RECEIVING side's logs (and, if you are a serious sender, on your per-delivery delivery log — Stripe's webhook dashboard exists precisely because senders own observability for flights they cannot step through). You have already used the pull version of this app's demo endpoints (you curl, the server answers); the flight simulator at the bottom runs the push version — this app's sender route constructs an event, signs it, and calls this app's own receiver route, so you watch both sides of one delivery.`,
+          body: `A request-response API is PULL: the client decides WHEN, your server just answers. A webhook is PUSH: something happened in your system (a payment settled, a build finished, a post was created), and YOUR server now plays HTTP CLIENT — opening a connection to somebody else's URL and delivering the news as an HTTP request. The recipient's endpoint (their "webhook receiver") is the server in the conversation. That is the entire mechanism — no protocol, no library, just "I will POST JSON to the URL you registered" — and it is why webhooks are everywhere: they are the cheapest possible way to make two systems react to each other in near-real-time without polling.\n\nThe inversion swaps your obligations in ways that surprise request-mode thinking. YOU now care about THEIR availability: if their server 500s, the event still happened — you must retry, and you will learn exponential backoff and dead-letter queues the hard way. THEY cannot authenticate the way request-clients do (no API key in a login step): the request arrives from your servers at a URL they told you about, so proving "this really is Stripe calling" needs CRYPTOGRAPHY — the HMAC signatures this topic is largely about. THEIR endpoint is now PUBLIC attack surface answering unauthenticated traffic, and it must be ONLINE even when its own app is half-broken — hence the acknowledge-fast-then-process-async pattern. And DEBUGGING inverts: when a webhook "doesn't work", the evidence is on the RECEIVING side's logs (and, if you are a serious sender, on your per-delivery delivery log — Stripe's webhook dashboard exists precisely because senders own observability for flights they cannot step through). You have already used the pull version of this app's demo endpoints (you curl, the server answers); the flight simulator in the delivering section below runs the push version — this app's sender route constructs an event, signs it, and calls this app's own receiver route, so you watch both sides of one delivery.`,
         },
         {
           kind: 'code',
@@ -212,6 +212,14 @@ if (skewSeconds > WEBHOOK_MAX_SKEW_SECONDS) {               // 300 here
 // and honors 429 Retry-After; the queue's DEMO_BASE_DELAY_MS is 300ms only
 // so the live demo shows a full cycle in about a second.)`,
         },
+        {
+          kind: 'demo',
+          id: 'webhooks-delivering:simulator-demo',
+          demoId: 'api:webhook-simulator',
+          title: 'The webhook flight simulator',
+          description:
+            'Sender and receiver on one screen: send post.created / post.updated events (or a tampered, wrongly-signed one), watch the exact flight — event, HMAC signature, headers, body — and the receiver\'s inbox grow with verified deliveries; tampered attempts come back 401 and never reach the inbox.',
+        },
       ],
     },
     {
@@ -333,21 +341,35 @@ curl -s localhost:4000/api/demo/webhooks/deliveries | jq '.deliveries[0]'
     },
     {
       id: 'webhooks-live',
-      title: 'See it live',
-      lead: 'The flight simulator: one app playing sender and receiver — build an event, sign it, deliver it, verify it, store it. Both sides of one webhook, in two panels.',
+      title: 'Webhooks from a terminal',
+      lead: 'Both sides of one webhook from a terminal — fire a signed flight, audit the signature yourself over the exact body bytes, read the receiver\'s inbox, and watch the tampered twin bounce off with a 401.',
       blocks: [
         {
           kind: 'text',
           id: 'webhooks-live:intro',
-          body: `The simulator is both roles of this topic on one screen. The SENDER panel (left) builds a real event — pick post.created or post.updated, flip the tamper switch, and SEND: the POST /api/demo/webhooks/send route serializes the event once, computes the HMAC-SHA256 over those exact bytes with node:crypto, and — when the guide's server is really listening — self-calls the receiver route over genuine HTTP. The flight renders in full: the event envelope, the hex signature, and the exact HTTP request (URL, headers, body) that flew — the per-delivery observability the sender-obligations section demanded, in miniature. The RECEIVER panel (right) is the inbox: every verified delivery the receiver accepted and stored (type, arrival time, a signature-verified badge, the payload), refreshed after each send. Flip the tamper switch to watch the dark path: the sender signs with the WRONG secret, the receiver's constant-time comparison fails, the flight comes back 401 with reason invalid_signature — and the inbox does NOT grow, because verification happens before storage, exactly as the receiver rules require. The curl block above replays every path from a terminal, including playing the sender by hand: compute the HMAC yourself, deliver it yourself, and watch the receiver accept exactly what you signed.`,
+          body: `The flight simulator now lives at the end of the delivering section above; this closing tour replays the same flights from a terminal, with one addition a UI cannot give you: auditing the signature yourself. Fire a send and read the per-delivery record the sender owes you — the event, the hex signature, the exact HTTP request, and the receiver's 202 outcome. Then recompute the HMAC over the body bytes the sender serialized (they ride the response as wouldDeliver.body) and watch your digest match the sender's, hex for hex — the raw-body lesson proven with your own hands. The deliveries endpoint is the receiver's inbox and, in production, exactly the shape of the delivery log a sender owes its integrations — queryable, per-flight, evidence for the support conversation. Finally the dark path: the tamper switch signs with the WRONG secret, the receiver's constant-time comparison fails, and the answer is a 401 with reason invalid_signature — while the inbox count does not move, verification-before-storage you can count. The local-development section above goes one step further and has you playing the sender entirely by hand.`,
         },
         {
-          kind: 'demo',
-          id: 'webhooks-live:simulator-demo',
-          demoId: 'api:webhook-simulator',
-          title: 'The webhook flight simulator',
-          description:
-            'Sender and receiver on one screen: send post.created / post.updated events (or a tampered, wrongly-signed one), watch the exact flight — event, HMAC signature, headers, body — and the receiver\'s inbox grow with verified deliveries; tampered attempts come back 401 and never reach the inbox.',
+          kind: 'code',
+          id: 'webhooks-live:curl',
+          language: 'bash',
+          caption: 'the audit tour — one flight, verify its signature yourself, read the inbox, then the tampered twin',
+          code: `# one flight, end to end — the per-delivery record the sender returns:
+curl -s -X POST localhost:4000/api/demo/webhooks/send | jq '{delivered, signature, outcome}'
+
+# audit the signature yourself — recompute the HMAC over the EXACT body bytes
+# the sender serialized (they ride the response), then compare hex for hex:
+BODY=$(curl -s -X POST localhost:4000/api/demo/webhooks/send | jq -r .wouldDeliver.body)
+node -e "const{createHmac}=require('node:crypto');
+  console.log(createHmac('sha256','whsec_teaching_demo').update(process.argv[1]).digest('hex'))" "$BODY"
+# → the same digest the sender reported in .signature — same bytes, same HMAC
+
+# the receiver's inbox — every VERIFIED delivery, newest first (count + cap):
+curl -s localhost:4000/api/demo/webhooks/deliveries | jq '{count, cap, newest: .deliveries[0]}'
+
+# the dark path — the tamper switch signs with the WRONG secret:
+curl -s -X POST 'localhost:4000/api/demo/webhooks/send?tamper=1' | jq '.outcome.status'
+# → 401 — and the inbox count above did not move`,
         },
       ],
     },

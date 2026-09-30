@@ -208,6 +208,14 @@ export interface SagaStepRecord {
     }
   }`,
         },
+        {
+          kind: 'demo',
+          id: 'advanced-architecture:sagas:saga-demo',
+          demoId: 'arch:saga',
+          title: 'The order saga, live',
+          description:
+            'Start an order — optionally with a permanently failing step (failAt). Every step is a real queue job with real retries; when the queue dead-letters the broken step, compensations unwind every attempted step in reverse (the failed one included). The step log, with per-step attempt counts, is the progress record the UI polls.',
+        },
       ],
     },
     {
@@ -419,6 +427,14 @@ export function foldAccount(events: readonly AccountEventData[]): AccountFold {
       };
     }`,
         },
+        {
+          kind: 'demo',
+          id: 'advanced-architecture:event-sourcing:eventstore-demo',
+          demoId: 'arch:eventstore',
+          title: 'The event store, live',
+          description:
+            'Open an account stream, deposit, then attempt the overdraft: the append is refused at the invariant gate (a typed 409) and the refusal itself is recorded as a withdrawal-rejected event. Watch load metadata prove snapshot + tail equals the full replay, and rebuild the projection from scratch with one click.',
+        },
       ],
     },
     {
@@ -461,14 +477,14 @@ export function childTraceContext(parent: TraceContext): TraceContext {
     },
     {
       id: 'advanced-architecture:see-it-live',
-      title: 'See it live',
+      title: 'Both exhibits from a terminal',
       lead:
-        'Both exhibits, live: append events and watch the fold refuse an overdraft; run a saga with a broken step and watch the compensations unwind it.',
+        'Both exhibits driven from a terminal (the interactive consoles live in the Sagas and Event sourcing sections above): append events and watch the fold refuse an overdraft; run a saga with a broken step and watch the compensations unwind it.',
       blocks: [
         {
           kind: 'text',
           id: 'advanced-architecture:see-it-live:endpoints',
-          body: `THE EVENT STORE console drives the real endpoints under /api/demo/patterns/eventstore: open an account (POST /accounts — a stream is minted, account-opened appended at version -1→0), deposit and withdraw (POST /accounts/:id/deposit and /withdraw — each append returns the new version, and both take an OPTIONAL expectedVersion so you can stage the stale-version 409 yourself). Attempt an OVERDRAFT and two things happen at once: the canonical 409 envelope (the typed conflict from the invariant gate), and the refusal itself recorded as a withdrawal-rejected event — reload the account and the attempt is in the history. GET /accounts/:id returns events, fold, load metadata (usedSnapshot, replayedEvents, consistent — the snapshot-verification proof, live once a stream's version lands on a multiple of five; the sixth event mints the first snapshot), and the projection slice; POST /project throws the read model away and re-derives it (the rebuild counter increments); POST /reset clears the store. THE SAGA console drives /api/demo/patterns/saga: start an order with failAt set to any forward step (POST /saga/start — returns immediately; the saga runs on real queue jobs), then poll GET /saga/:id and watch the step log fill: forward steps succeeding with attempt counts, the broken step exhausting the queue's retries, dead-lettering, then the compensations running in REVERSE — refund-card, release-stock, cancel-order — until the saga lands on 'compensated' (a clean run walks all four steps to 'completed'). Both consoles script everything below.`,
+          body: `THE EVENT STORE console (in the Event sourcing section above) drives the real endpoints under /api/demo/patterns/eventstore: open an account (POST /accounts — a stream is minted, account-opened appended at version -1→0), deposit and withdraw (POST /accounts/:id/deposit and /withdraw — each append returns the new version, and both take an OPTIONAL expectedVersion so you can stage the stale-version 409 yourself). Attempt an OVERDRAFT and two things happen at once: the canonical 409 envelope (the typed conflict from the invariant gate), and the refusal itself recorded as a withdrawal-rejected event — reload the account and the attempt is in the history. GET /accounts/:id returns events, fold, load metadata (usedSnapshot, replayedEvents, consistent — the snapshot-verification proof, live once a stream's version lands on a multiple of five; the sixth event mints the first snapshot), and the projection slice; POST /project throws the read model away and re-derives it (the rebuild counter increments); POST /reset clears the store. THE SAGA console (in the Sagas section above) drives /api/demo/patterns/saga: start an order with failAt set to any forward step (POST /saga/start — returns immediately; the saga runs on real queue jobs), then poll GET /saga/:id and watch the step log fill: forward steps succeeding with attempt counts, the broken step exhausting the queue's retries, dead-lettering, then the compensations running in REVERSE — refund-card, release-stock, cancel-order — until the saga lands on 'compensated' (a clean run walks all four steps to 'completed'). The curl block below scripts both tours.`,
         },
         {
           kind: 'code',
@@ -503,22 +519,6 @@ curl -s -X POST localhost:4000/api/demo/patterns/saga/start \\
 curl -s localhost:4000/api/demo/patterns/saga/saga_2 | jq '.saga.state'
 curl -s localhost:4000/api/demo/patterns/saga/saga_2 \\
   | jq '.saga.steps[] | {step, kind, status, attempts}'`,
-        },
-        {
-          kind: 'demo',
-          id: 'advanced-architecture:see-it-live:eventstore-demo',
-          demoId: 'arch:eventstore',
-          title: 'The event store, live',
-          description:
-            'Open an account stream, deposit, then attempt the overdraft: the append is refused at the invariant gate (a typed 409) and the refusal itself is recorded as a withdrawal-rejected event. Watch load metadata prove snapshot + tail equals the full replay, and rebuild the projection from scratch with one click.',
-        },
-        {
-          kind: 'demo',
-          id: 'advanced-architecture:see-it-live:saga-demo',
-          demoId: 'arch:saga',
-          title: 'The order saga, live',
-          description:
-            'Start an order — optionally with a permanently failing step (failAt). Every step is a real queue job with real retries; when the queue dead-letters the broken step, compensations unwind every attempted step in reverse (the failed one included). The step log, with per-step attempt counts, is the progress record the UI polls.',
         },
       ],
     },

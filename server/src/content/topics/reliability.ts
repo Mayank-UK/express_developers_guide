@@ -170,6 +170,14 @@ private rejectedFastFailure(): Failure {
           id: 'reliability-breakers:real-world',
           body: `IN PRODUCTION you reach for a library (\`opossum\` is the Node standard — this repo hand-rolled its own because the mechanism is the lesson; the API surface is the same shape): options become failure-rate thresholds, rolling windows, per-endpoint breakers, and METRICS. The operational notes that matter once you have them: (1) ONE BREAKER PER DEPENDENCY (a shared breaker lets one bad endpoint open the door for all of them); (2) breakers are a SIGNAL, not just a shield — an open breaker page is someone's pager; (3) choose the cooldown from the dependency's failure mode (a process restart recovers in seconds; a flooded database needs tens); (4) decide what callers DO with a rejection before you deploy — a breaker that turns into a 500 for every request protected nobody. The live demo below makes the whole machine watchable: three failing calls open the circuit, the fourth bounces off it in ~0ms, the cooldown ticks down, healthy probes close it — and a SLOW dependency (800ms against a 300ms deadline) trips it just the same.`,
         },
+        {
+          kind: 'demo',
+          id: 'reliability-breakers:demo',
+          demoId: 'reliability:breaker',
+          title: 'The watchable circuit breaker',
+          description:
+            'A real circuit breaker around a steerable flaky dependency: trip it with failures, watch calls bounce off the open circuit in ~0ms, ride out the cooldown countdown, and heal it through half-open probes — with the state-transition timeline alongside.',
+        },
       ],
     },
     {
@@ -282,14 +290,14 @@ export const SAFE_DECREMENT_SQL =
     },
     {
       id: 'reliability-see-it-live',
-      title: 'See it live',
+      title: 'The breaker lifecycle from a terminal',
       lead:
-        'The watchable breaker: a real CircuitBreaker around a flaky dependency you steer — trip it, bounce off it, let it heal, all in ~0ms where it matters.',
+        'A real CircuitBreaker around a flaky dependency you steer with curl — trip it, bounce off it, let it heal, all in ~0ms where it matters.',
       blocks: [
         {
           kind: 'text',
           id: 'reliability-see-it-live:what-you-see',
-          body: `THE DEMO is the whole topic in two minutes of clicking. The dependency has three modes: healthy (answers in ~50ms), failing (errors after ~50ms), and slow (would answer at 800ms — past the breaker's 300ms deadline, so it counts as a failure: timeouts trip breakers). Set the mode to failing and CALL three times — the state badge flips to OPEN and the transition lands in the timeline. Call again: REJECTED-FAST, in ~0 milliseconds, the dependency never touched — the load-shedding moment, visible as a number. Watch the cooldown count down; when it lapses the breaker half-opens, and with the mode back to healthy, two successful probes close it. Trip it with slow mode if you want the timeout path. The breaker KEEPS its state across mode switches on purpose — that is what makes the heal story real. Or script it from a terminal:`,
+          body: `THE WATCHABLE breaker panel lives in the Circuit breakers section above; the same lifecycle scripts from a terminal in two minutes. The dependency has three modes: healthy (answers in ~50ms), failing (errors after ~50ms), and slow (would answer at 800ms — past the breaker's 300ms deadline, so it counts as a failure: timeouts trip breakers). Set the mode to failing and CALL three times — the state flips to OPEN and the transition lands in the timeline. Call again: REJECTED-FAST, in ~0 milliseconds, the dependency never touched — the load-shedding moment, visible as a number. Watch the cooldown count down; when it lapses the breaker half-opens, and with the mode back to healthy, two successful probes close it. Trip it with slow mode if you want the timeout path. The breaker KEEPS its state across mode switches on purpose — that is what makes the heal story real. Script it from a terminal:`,
         },
         {
           kind: 'code',
@@ -314,14 +322,6 @@ curl -s -X POST localhost:4000/api/demo/reliability/call | python3 -m json.tool
 # the timeline + the cooldown, then reset and heal
 curl -s localhost:4000/api/demo/reliability/status | python3 -m json.tool
 curl -s -X POST localhost:4000/api/demo/reliability/reset > /dev/null`,
-        },
-        {
-          kind: 'demo',
-          id: 'reliability-see-it-live:demo',
-          demoId: 'reliability:breaker',
-          title: 'The watchable circuit breaker',
-          description:
-            'A real circuit breaker around a steerable flaky dependency: trip it with failures, watch calls bounce off the open circuit in ~0ms, ride out the cooldown countdown, and heal it through half-open probes — with the state-transition timeline alongside.',
         },
       ],
     },

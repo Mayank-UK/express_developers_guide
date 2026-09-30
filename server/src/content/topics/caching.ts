@@ -165,6 +165,14 @@ return ok({
           id: 'caching-aside:write-through',
           body: `THE ALTERNATIVES, one honest paragraph each. WRITE-THROUGH: the cache sits IN FRONT of the store on WRITES too — every write updates the cache and the database together (usually in the data-store layer, not the app), buying always-fresh reads at the cost of write latency (the cache write rides the write path) and a coupling that makes the "lazy" simplicity of cache-aside disappear; it earns its keep when the same key is read immediately after writing (counters, config, session state). WRITE-BEHIND (write-back): writes land in the cache and return, with the durable write flushed ASYNCHRONOUSLY — fast writes, and an uncomfortable property: the cache can say "written" and then the process dies before the database ever sees it. That is a durability trade, not a performance trick, and it belongs only where the loss window is acceptable (analytics, counters) — never for the system of record. The guide's stance: start with cache-aside + TTL + explicit invalidation (below), reach for write-through when read-after-write consistency genuinely hurts, and treat write-behind as a specialist tool you must be able to defend in a design review.`,
         },
+        {
+          kind: 'demo',
+          id: 'caching-aside:lab-demo',
+          demoId: 'caching:lab',
+          title: 'The caching lab',
+          description:
+            'ETag + If-None-Match → 304 with an empty body, the immutable vs revalidation Cache-Control policies, the cache-aside query with live hit/miss counters and the store chip (redis when the optional service is live, the in-process Map otherwise), explicit invalidation, and the stampede comparison — naive (N rebuilds) vs single-flight (one).',
+        },
       ],
     },
     {
@@ -262,21 +270,13 @@ curl -si 'localhost:4000/api/demo/caching/asset'                  | grep -i cach
     },
     {
       id: 'caching-live',
-      title: 'See it live',
-      lead: 'One lab, both worlds: the etag asset with its 304 round-trip and the immutable toggle, the cache-aside query with hit/miss counters over the store this process is actually using (redis when the optional service is up — the chip says which), and the stampede comparison in one click each way. Works fully without Redis.',
+      title: 'The caching endpoints from a terminal',
+      lead: 'The lab\'s endpoints driven from a terminal (the interactive panel lives in the cache-aside section above): the etag asset with its 304 round-trip and the immutable toggle, the cache-aside query with hit/miss counters over the store this process is actually using (redis when the optional service is up — the response says which), and the stampede comparison one command each way. Works fully without Redis.',
       blocks: [
         {
           kind: 'text',
           id: 'caching-live:intro',
-          body: `HTTP CACHING PANEL: fetch the asset without a validator → a 200, the body, the sha256 etag and the revalidation policy; then REVALIDATE with the stored etag in If-None-Match → status 304 and a body of exactly zero bytes (the savings, visible); the immutable toggle shows the year-long policy a hashed asset earns. CACHE-ASIDE PANEL: run the query repeatedly — the source badge flips origin → cache, the hit/miss counters and hit rate update live, and the STORE chip says redis or memory (start the optional service with docker compose -f .docker/docker-compose.yml up -d redis and the same endpoint silently switches to the shared store; stop it and the chip says memory again). INVALIDATE, and the next query visibly returns to origin. STAMPEDE PANEL: run the naive mode — 10 parallel misses, 10 origin calls, every caller waiting on the serialized fake origin; then single-flight — the same 10 callers, ONE origin call. The curl block drives every endpoint from a terminal, including the -H 'If-None-Match: …' round-trip that is the whole conditional-request story in two commands.`,
-        },
-        {
-          kind: 'demo',
-          id: 'caching-live:lab-demo',
-          demoId: 'caching:lab',
-          title: 'The caching lab',
-          description:
-            'ETag + If-None-Match → 304 with an empty body, the immutable vs revalidation Cache-Control policies, the cache-aside query with live hit/miss counters and the store chip (redis when the optional service is live, the in-process Map otherwise), explicit invalidation, and the stampede comparison — naive (N rebuilds) vs single-flight (one).',
+          body: `THE LAB now lives in the cache-aside section above; this is its terminal companion, and the curl block below drives every endpoint. HTTP CACHING from curl: fetch the asset without a validator → a 200, the body, the sha256 etag and the revalidation policy; then revalidate with the stored etag in If-None-Match → status 304 and a body of exactly zero bytes (the savings, visible); the immutable version shows the year-long policy a hashed asset earns. CACHE-ASIDE: run the query repeatedly — the source flips origin → cache, the hit/miss counters and hit rate update, and the store field says redis or memory (start the optional service with docker compose -f .docker/docker-compose.yml up -d redis and the same endpoint silently switches to the shared store; stop it and it says memory again). INVALIDATE, and the next query visibly returns to origin. STAMPEDE: run the naive mode — 10 parallel misses, 10 origin calls, every caller waiting on the serialized fake origin; then single-flight — the same 10 callers, ONE origin call. Including the -H 'If-None-Match: …' round-trip that is the whole conditional-request story in two commands.`,
         },
         {
           kind: 'code',

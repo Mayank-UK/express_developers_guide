@@ -71,6 +71,14 @@ export class EmailService {
 
   async send(message: EmailMessage): Promise<Result<EmailSendReceipt, Failure>> {`,
         },
+        {
+          kind: 'demo',
+          id: 'thirdparty-integrating-vs-building:demo',
+          demoId: 'thirdparty:hub',
+          title: 'The integration hub',
+          description:
+            'Email: the real nodemailer jsonTransport adapter — send and watch the outbox of captured messages (never sent, never any network). Payments: a clearly-labeled Stripe-shaped mock — PaymentIntent lifecycle, client secret, 4242-success and decline outcomes with Stripe\u2019s real field names. Storage: a real HMAC presign ceremony — signed grant, expiry countdown, upload into the files topic\u2019s real store.',
+        },
       ],
     },
     {
@@ -324,14 +332,14 @@ const result = await breaker.execute((signal) => flaky.call(signal));
     },
     {
       id: 'thirdparty-see-it-live',
-      title: 'See it live',
+      title: 'The integration hub from a terminal',
       lead:
-        'The hub: a real captured email, a Stripe-shaped mock payment, a real presigned upload — three panels, three levels of realness, each labeled.',
+        'Three integrations over curl: a real captured email, a Stripe-shaped mock payment, a real presigned upload — three tours, three levels of realness, each labeled.',
       blocks: [
         {
           kind: 'text',
           id: 'thirdparty-see-it-live:what-you-see',
-          body: `THREE PANELS, THREE LEVELS OF REALNESS, LABELED: EMAIL is the real thing — POST /api/demo/email/send goes through the REAL nodemailer adapter (jsonTransport), and the outbox below shows what was captured: messageId, recipients, and the exact JSON nodemailer produced. Nothing was sent anywhere; swap one createTransport() call and it would be. PAYMENTS is the labeled mock — create an intent ($19.99 by default), watch the client secret and the requires_confirmation status, then CONFIRM with the 4242 test card (succeeded + receipt, the shapes a payment_intent.succeeded webhook delivers) or the declined card (status falls back to requires_payment_method with last_payment_error carrying code and decline_code — Stripe's real field names). STORAGE is a real signing flow — presign mints the HMAC token (filename, content type, 300s expiry), then the upload button PUTs a payload through the presigned URL: signature verified, expiry checked, and the file lands in the files topic's REAL store, fetchable at its raw endpoint. Only the bucket is imaginary — the content above says so, and so does every response's note field. Or drive it with curl:`,
+          body: `THREE ENDPOINTS, THREE LEVELS OF REALNESS, LABELED: EMAIL is the real thing — POST /api/demo/email/send goes through the REAL nodemailer adapter (jsonTransport), and the outbox shows what was captured: messageId, recipients, and the exact JSON nodemailer produced. Nothing was sent anywhere; swap one createTransport() call and it would be. PAYMENTS is the labeled mock — create an intent ($19.99 by default), watch the client secret and the requires_confirmation status, then CONFIRM with the 4242 test card (succeeded + receipt, the shapes a payment_intent.succeeded webhook delivers) or the declined card (status falls back to requires_payment_method with last_payment_error carrying code and decline_code — Stripe's real field names). STORAGE is a real signing flow — presign mints the HMAC token (filename, content type, 300s expiry), then the upload PUTs a payload through the presigned URL: signature verified, expiry checked, and the file lands in the files topic's REAL store, fetchable at its raw endpoint. Only the bucket is imaginary — the content above says so, and so does every response's note field. The interactive hub panel lives in the Integrating vs building section above; from here, drive all three with curl:`,
         },
         {
           kind: 'code',
@@ -357,14 +365,6 @@ URL=$(curl -s -X POST localhost:4000/api/demo/storage/presign \\
   -d '{"filename":"hello.txt","contentType":"text/plain"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["uploadUrl"])')
 curl -s -X POST "localhost:4000$URL" -H 'content-type: text/plain' \\
   -d 'presigned bytes — straight into the real store'`,
-        },
-        {
-          kind: 'demo',
-          id: 'thirdparty-see-it-live:demo',
-          demoId: 'thirdparty:hub',
-          title: 'The integration hub',
-          description:
-            'Email: the real nodemailer jsonTransport adapter — send and watch the outbox of captured messages (never sent, never any network). Payments: a clearly-labeled Stripe-shaped mock — PaymentIntent lifecycle, client secret, 4242-success and decline outcomes with Stripe\u2019s real field names. Storage: a real HMAC presign ceremony — signed grant, expiry countdown, upload into the files topic\u2019s real store.',
         },
       ],
     },

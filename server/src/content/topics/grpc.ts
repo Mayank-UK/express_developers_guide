@@ -250,6 +250,14 @@ try {
   client.close();                                     // one client per call, nothing left open
 }`,
         },
+        {
+          kind: 'demo',
+          id: 'grpc-calling:console-demo',
+          demoId: 'api:grpc-console',
+          title: 'The gRPC console',
+          description:
+            'Invoke guide.v1.PostsService from the browser: pick ListPosts / GetPost / CreatePost, edit the JSON payload, and watch the real gRPC outcome — status chip (OK green, error codes red), the response message, and failure kinds read back from the trailers. The trip is browser → HTTP bridge → real gRPC over HTTP/2 → the same posts use case.',
+        },
       ],
     },
     {
@@ -354,21 +362,13 @@ const loaded = loadPackageDefinition(packageDefinition) as unknown as {
     },
     {
       id: 'grpc-live',
-      title: 'See it live',
-      lead: 'A real gRPC console: the browser picks a method and payload, an HTTP bridge relays the instruction as a real grpc-js call, and the outcome — OK or a status code with its message — comes back exactly as a gRPC client would see it.',
+      title: 'gRPC from a terminal',
+      lead: 'The same service, no browser: the status endpoint serves the contract itself, the invoke bridge relays your instructions as real grpc-js calls, and the outcomes come back exactly as a gRPC client would read them.',
       blocks: [
         {
           kind: 'text',
           id: 'grpc-live:intro',
-          body: `The console below drives the REAL guide.v1.PostsService this topic built. The STATUS PANEL reports whether the gRPC listener is running and on which port, lists the three rpcs with their full wire paths, and shows the proto source itself — the exact text the server loaded at runtime, byte-identical to posts.proto in the repository. Pick a method: LISTPOSTS sends the empty request and renders the PostsList message (the seeded posts, camelCase fields — watch created_at become createdAt, the loader's keepCase conversion you read about); GETPOST takes an id (copy one from a ListPosts response first — the prefilled placeholder id will come back NOT_FOUND, which is itself the demo); CREATEPOST takes title/body/author and mints a post through the same use-case validation REST and GraphQL use. The INVOKE button runs browser → HTTP bridge → real gRPC call over HTTP/2 → PostsUseCase, and the result panel shows the gRPC status as a chip — OK in green, error codes in red — with the message and, for failures, the app's failure-kind read back out of the trailers. Turn on failure injection in the REST workbench topic first and every invoke here answers UNAVAILABLE — the same scenario switch, proving the surfaces share one spine. The curl block below plays the same calls from a terminal, no browser involved.`,
-        },
-        {
-          kind: 'demo',
-          id: 'grpc-live:console-demo',
-          demoId: 'api:grpc-console',
-          title: 'The gRPC console',
-          description:
-            'Invoke guide.v1.PostsService from the browser: pick ListPosts / GetPost / CreatePost, edit the JSON payload, and watch the real gRPC outcome — status chip (OK green, error codes red), the response message, and failure kinds read back from the trailers. The trip is browser → HTTP bridge → real gRPC over HTTP/2 → the same posts use case.',
+          body: `The console now lives at the end of the calling section above; this closing tour drives the same bridge from a terminal. Start with the status endpoint: it reports whether the gRPC listener is running and on which port, and it serves the proto source itself — the exact text the server loaded at runtime, byte-identical to posts.proto in the repository. Then walk the method table through the invoke bridge: ListPosts with the empty request (the seeded posts arrive with camelCase fields — watch created_at become createdAt, the loader's keepCase conversion), GetPost with a well-formed id that matches nothing (NOT_FOUND — the failure kind read back out of the trailers), and CreatePost, which mints a post through the same use-case validation REST and GraphQL use. Turn on failure injection in the REST workbench topic first and every invoke here answers UNAVAILABLE — the same scenario switch, proving the surfaces share one spine. The last lines skip the bridge entirely: with grpcurl and the proto file you speak to :50051 directly, which is the quiet point of the whole topic — the contract is the .proto, not the tooling around it.`,
         },
         {
           kind: 'code',

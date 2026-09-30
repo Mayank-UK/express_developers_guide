@@ -58,7 +58,7 @@ async create(raw: unknown): Promise<Result<Post, Failure>> {
         {
           kind: 'text',
           id: 'validation-boundary:cost',
-          body: `The cost of skipping this is never a loud crash — it is a slow rot. An unvalidated string reaches a query and becomes an injection vector (the Security topic's department); an unvalidated number reaches a pagination loop and becomes a DoS; an unvalidated enum reaches a switch statement and falls through every case; an unknown field you never noticed is stored, echoed, and eventually LEAKED (the serialization half of this topic). Validation is not paperwork at the door; it is the mechanism that makes every other safety claim in the codebase true. The demo at the bottom of this page enforces one rule table three times — zod, express-validator, Joi — through three real endpoints, and the remarkable thing you will SEE is how much they agree once the rules are written down and how much they differ in defaults, coercion, and error shape until you normalize them.`,
+          body: `The cost of skipping this is never a loud crash — it is a slow rot. An unvalidated string reaches a query and becomes an injection vector (the Security topic's department); an unvalidated number reaches a pagination loop and becomes a DoS; an unvalidated enum reaches a switch statement and falls through every case; an unknown field you never noticed is stored, echoed, and eventually LEAKED (the serialization half of this topic). Validation is not paperwork at the door; it is the mechanism that makes every other safety claim in the codebase true. The demo in the choosing section below enforces one rule table three times — zod, express-validator, Joi — through three real endpoints, and the remarkable thing you will SEE is how much they agree once the rules are written down and how much they differ in defaults, coercion, and error shape until you normalize them.`,
         },
       ],
     },
@@ -401,6 +401,14 @@ three ways in one codebase. Pick per codebase, not per endpoint.`,
           id: 'validation-choosing:normalize',
           body: `Whatever you pick, the arena's least glamorous lesson is the one to steal: NORMALIZE AT THE EDGE. Each library's native error shape is well-designed for its own ecosystem and useless as an API contract — ZodError.issues, validationResult arrays, and Joi details all say the same things in different dialects, and a React form should not need three parsers. The arena flattens every one of them into { field, message } before the envelope renders it (including rewriting express-validator's 'tags[0]' to 'tags.0' so array items carry the same name everywhere), while keeping the raw native shape alongside under raw so you can still see what the library actually said. Ten lines of mapping per library buys a client that never knows which validator answered — and the freedom to change your mind later without breaking the contract.`,
         },
+        {
+          kind: 'demo',
+          id: 'validation-choosing:arena-demo',
+          demoId: 'validation:arena',
+          title: 'The three-validator arena',
+          description:
+            'One form validated by three libraries against one rule table: submit to all three endpoints in parallel (or one at a time), and compare verdicts, normalized field errors, and each library\u2019s raw response — including what each one does with a stringly age, an unknown field, or six tags.',
+        },
       ],
     },
     {
@@ -461,13 +469,13 @@ function postToRow(post: Post): PostRow {
     },
     {
       id: 'validation-live',
-      title: 'See it live',
-      lead: 'One form, one rule table, three validators — fire the same payload at zod, express-validator, and Joi endpoints in parallel and watch them agree on the verdict while disagreeing, revealingly, on everything else.',
+      title: 'The validators from a terminal',
+      lead: 'One rule table, three endpoints, one terminal — fetch the schema as data, fire the same payload at zod, express-validator, and Joi, and watch the verdicts agree while the raw error dialects disagree, revealingly.',
       blocks: [
         {
           kind: 'text',
           id: 'validation-live:intro',
-          body: `The arena's contract lives at GET /api/demo/validation/schema — the canonical rules (title 1..80, valid email, integer age 18..120, optional https website, 1..5 tags of 1..20 characters), the three endpoints, and a known-valid plus a known-invalid sample. The demo renders its form from that spec, so the UI and the server cannot disagree about the rules. Submit with "all three" selected and the SAME payload is POSTed to /api/demo/validation/zod, /express-validator, and /joi in parallel; each answer becomes a card: the verdict (all three always AGREE on pass/fail for the canonical rules), the normalized { field, message } error list (identical field names across the three — the normalization layer at work, including 'tags.0' for array items), and a collapsible RAW response showing what the library natively said — ZodError.issues with their codes, the validationResult array with one entry per failed check, Joi's details with their stable types. The fun is in the disagreements the raw panels expose: prefill the invalid sample to see all three fail the same four fields at once (Joi and express-validator return every error; that is abortEarly: false and per-check accumulation doing their jobs), then hand-edit age to the STRING "42" — zod fails it as invalid_type while Joi returns 200 with age 42 (converted) and express-validator returns 200 with age "42" (string-based checks, value untouched): three correct libraries, three philosophies, one wire format. Or add a field the rules never mention — all three reject it, each by its own mechanism (.strict(), checkExact, object.unknown).`,
+          body: `The arena now lives at the end of the choosing section above; this closing tour drives the same three endpoints with curl. Start where the demo itself starts: GET /api/demo/validation/schema returns the canonical rules (title 1..80, valid email, integer age 18..120, optional https website, 1..5 tags of 1..20 characters), the three endpoints, and the known-valid plus known-invalid samples — the contract as data, which is exactly what the arena renders its form from, so terminal and UI cannot disagree about the rules. Then the three experiments: the valid payload (all three answer 200 with the same parsed shape back — swap the trailing /zod for /express-validator and /joi), the known-invalid sample (four fields fail everywhere; note that the normalized error.errors agree on field names while error.raw shows each library's native dialect — ZodError.issues with their codes, the validationResult array with one entry per failed check, Joi's details with their stable types), and the coercion probe — age as the STRING "42": zod answers 400 invalid_type, Joi answers 200 with age 42 (converted), express-validator answers 200 with age still "42" (string-based checks, value untouched). Three correct libraries, three philosophies, one wire format — the topic's whole argument, replayed from a shell.`,
         },
         {
           kind: 'code',
@@ -499,14 +507,6 @@ curl -s -X POST -H 'content-type: application/json' \\
 curl -s -X POST -H 'content-type: application/json' \\
   -d '{"title":"Coerce me","email":"ada@example.com","age":"42","tags":["types"]}' \\
   localhost:4000/api/demo/validation/express-validator  # 200 — age still "42"`,
-        },
-        {
-          kind: 'demo',
-          id: 'validation-live:arena-demo',
-          demoId: 'validation:arena',
-          title: 'The three-validator arena',
-          description:
-            'One form validated by three libraries against one rule table: submit to all three endpoints in parallel (or one at a time), and compare verdicts, normalized field errors, and each library\u2019s raw response — including what each one does with a stringly age, an unknown field, or six tags.',
         },
       ],
     },

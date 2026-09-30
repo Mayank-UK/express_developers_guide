@@ -26,7 +26,7 @@ export const topicRequestResponse: Topic = {
         {
           kind: 'text',
           id: 'reqres-request:two-views',
-          body: `Concept first, framework-free: what arrives at your server is not an object — it is a sequence of bytes on a socket, framed by an HTTP request line and headers. Node exposes that as a readable stream (IncomingMessage): you can read it chunk by chunk, or you can let someone else read it for you and hand you the result. Express's req is that stream plus a parsed view built on top: req.method and req.originalUrl from the request line, req.headers as a lowercased map, req.params and req.query filled in by the router, req.body — famously — filled in only by a body-parsing middleware that matched the request's content-type. That last caveat is the number-one Express 5 surprise: with only express.json() mounted (this app's exact setup), a POST with Content-Type: text/plain arrives with req.body UNDEFINED — not {}, undefined. The bytes are still there, unconsumed, in the stream; no parser claimed them.\n\nThe parsed view has convenience accessors worth knowing by name: req.get('X-Custom') (case-insensitive header read), req.protocol and req.secure (http vs https), req.ip (the socket's remote address — which behind a reverse proxy is the PROXY's address, not the client's, unless you opt in with app.set('trust proxy', ...) so Express honors X-Forwarded-For; this app deliberately does not set it, so req.ip stays honest about what it is), and req.accepts() for negotiation (next sections). The inspector demo at the bottom of this page exercises the whole surface: fire it with different methods, paths, query strings, and content types, and watch the parsed view change while the stream underneath stays the same bytes.`,
+          body: `Concept first, framework-free: what arrives at your server is not an object — it is a sequence of bytes on a socket, framed by an HTTP request line and headers. Node exposes that as a readable stream (IncomingMessage): you can read it chunk by chunk, or you can let someone else read it for you and hand you the result. Express's req is that stream plus a parsed view built on top: req.method and req.originalUrl from the request line, req.headers as a lowercased map, req.params and req.query filled in by the router, req.body — famously — filled in only by a body-parsing middleware that matched the request's content-type. That last caveat is the number-one Express 5 surprise: with only express.json() mounted (this app's exact setup), a POST with Content-Type: text/plain arrives with req.body UNDEFINED — not {}, undefined. The bytes are still there, unconsumed, in the stream; no parser claimed them.\n\nThe parsed view has convenience accessors worth knowing by name: req.get('X-Custom') (case-insensitive header read), req.protocol and req.secure (http vs https), req.ip (the socket's remote address — which behind a reverse proxy is the PROXY's address, not the client's, unless you opt in with app.set('trust proxy', ...) so Express honors X-Forwarded-For; this app deliberately does not set it, so req.ip stays honest about what it is), and req.accepts() for negotiation (next sections). The inspector demo below exercises the whole surface: fire it with different methods, paths, query strings, and content types, and watch the parsed view change while the stream underneath stays the same bytes.`,
         },
         {
           kind: 'code',
@@ -63,6 +63,14 @@ async create(httpRequest: HttpRequest): Promise<HttpResponse> {
           kind: 'text',
           id: 'reqres-request:defaults-are-strings',
           body: `Two habits prevent most req-view bugs. First: everything parsed from the wire arrives as a string (or array of strings) until YOU convert it. ?limit=5 gives you '5'; the routing topic's search handler converts and bounds it explicitly, and rejects garbage — because Number('abc') is NaN, and NaN limits have a way of reaching SQL. Second: distinguish "absent" from "empty". req.query.limit is undefined when the key is missing but '' when the client sent ?limit= — different intents (client omitted it vs client explicitly cleared it) that often deserve different handling, and the body-parser analogue is the undefined-vs-{} gotcha above. The view is a convenience; treat its edge cases as contract, not accident.`,
+        },
+        {
+          kind: 'demo',
+          id: 'reqres-request:inspector-demo',
+          demoId: 'reqres:inspector',
+          title: 'The request inspector',
+          description:
+            'Fire any method at /api/demo/reqres/inspect with a path, query, and content type of your choosing: the reflected view shows the request line, the parsed query, the header map (x- headers and the correlation id highlighted), and the body as the server actually got it — parsed when a parser matched, raw from the stream when nothing did.',
         },
       ],
     },
@@ -189,6 +197,14 @@ res.status(httpResponse.status).json(httpResponse.body); // status chains INTO t
 // checking is possible but is a code smell — fix the control flow instead:
 //   if (res.headersSent) { … }`,
         },
+        {
+          kind: 'demo',
+          id: 'reqres-response:methods-demo',
+          demoId: 'reqres:methods',
+          title: 'The response-methods playground',
+          description:
+            'Make the server answer with one of seven response families — json, text, a chosen status code, a 307 redirect, a security-attribute cookie, a chunked ndjson stream, an attachment — and read what comes back: the status line, the headers that family sets, the body, and the verdict naming the method that produced it.',
+        },
       ],
     },
     {
@@ -243,7 +259,7 @@ res.status(httpResponse.status).json(httpResponse.body); // status chains INTO t
         {
           kind: 'text',
           id: 'reqres-status:happy-vs-error',
-          body: `The division of labor is worth stating precisely because it generalizes: happy-path responses belong to the handler that earned them (res.json / res.status(201).json / res.type('text/plain').send — the response-methods demo below fires one real example of each family), and failure responses belong to the error pipeline alone. A handler's job on failure is to THROW something typed — ValidationException, NotFoundException, or an AppException carrying a status — and let the middleware translate. Note the boundary the demo's status mode deliberately draws: it uses res.status(4xx).json(...) to SHOW you a status line, with an ordinary body — a chosen status is not a failure, so it never touches the error pipeline. The moment a request actually FAILS — an unknown mode, a status outside the safe list — the same endpoint stops answering itself and throws a ValidationException, and the envelope arrives from the one place that renders it.`,
+          body: `The division of labor is worth stating precisely because it generalizes: happy-path responses belong to the handler that earned them (res.json / res.status(201).json / res.type('text/plain').send — the response-methods demo above fires one real example of each family), and failure responses belong to the error pipeline alone. A handler's job on failure is to THROW something typed — ValidationException, NotFoundException, or an AppException carrying a status — and let the middleware translate. Note the boundary the demo's status mode deliberately draws: it uses res.status(4xx).json(...) to SHOW you a status line, with an ordinary body — a chosen status is not a failure, so it never touches the error pipeline. The moment a request actually FAILS — an unknown mode, a status outside the safe list — the same endpoint stops answering itself and throws a ValidationException, and the envelope arrives from the one place that renders it.`,
         },
       ],
     },
@@ -418,13 +434,13 @@ res.status(200).send(body);`,
     },
     {
       id: 'reqres-live',
-      title: 'See it live',
-      lead: 'Two inspectors into the real objects: fire any method, path, and content type at the echo endpoint and watch the parsed view change; then make the server answer with each response-method family and read what comes back — status, headers, body, and the method that produced each.',
+      title: 'Drive both endpoints from a terminal',
+      lead: 'The inspector and the response playground, no browser needed: curl the same endpoints the demos above drive — where nothing hides a header.',
       blocks: [
         {
           kind: 'text',
           id: 'reqres-live:intro',
-          body: `The first demo is the request object with its hood open: one endpoint, ANY /api/demo/reqres/inspect, that answers every method and reports exactly what the server received — the request line, the parsed query, the lowercased header map (with your custom x- headers and the correlation id highlighted), and the body BOTH ways: parsed when a parser claimed it, raw-from-the-stream when one did not. POST it JSON and POST it text/plain and watch the difference — that is the body-undefined gotcha from the first section, happening live. The second demo turns the telescope around: the response-methods playground makes the server answer with one of seven real response families — res.json, res.type().send, res.status().json (pick any code from the safe list; note 204 sends no body at all), res.redirect(307) with the Location header visible, res.cookie with its security attributes, a five-line chunked stream, and a Content-Disposition attachment — and shows you the status line, the interesting headers, the body, and a verdict naming the method that produced them. Watch for two browser honesty notes in it: fetch hides Set-Cookie from JavaScript (a forbidden response header — use the curl below to see it), and fetch with redirect: 'manual' may return an opaque response that hides the 307 itself; the demo detects both and says so rather than lying to you.`,
+          body: `Both interactive demos now live beside the objects they teach — the request inspector at the end of "The request object", the response-methods playground at the end of "The response object". The curls below drive the same two endpoints from a terminal, which is the more honest view of several lessons: the inspector answers every method and reports exactly what the server received — the request line, the parsed query, the lowercased header map, and the body BOTH ways (parsed when a parser claimed it, raw from the stream when one did not; POST it JSON and then text/plain to watch the body-undefined gotcha happen live). The respond?mode= curls fire one response family each — res.json, a chosen status (204 sends no body at all), the 307 redirect with its Location header, the cookie with its security attributes (Set-Cookie is a forbidden header a browser's fetch hides from JavaScript — the terminal does not), a five-line chunked stream, and a Content-Disposition attachment. The -i output IS the lesson: status line, headers, body, one family at a time.`,
         },
         {
           kind: 'code',
@@ -450,22 +466,6 @@ curl -si 'localhost:4000/api/demo/reqres/respond?mode=redirect'            # →
 curl -si 'localhost:4000/api/demo/reqres/respond?mode=cookie'              # → Set-Cookie with HttpOnly; SameSite=Strict; Max-Age=60
 curl -si 'localhost:4000/api/demo/reqres/respond?mode=stream'              # → Transfer-Encoding: chunked, five ndjson lines
 curl -si 'localhost:4000/api/demo/reqres/respond?mode=download'            # → Content-Disposition: attachment`,
-        },
-        {
-          kind: 'demo',
-          id: 'reqres-live:inspector-demo',
-          demoId: 'reqres:inspector',
-          title: 'The request inspector',
-          description:
-            'Fire any method at /api/demo/reqres/inspect with a path, query, and content type of your choosing: the reflected view shows the request line, the parsed query, the header map (x- headers and the correlation id highlighted), and the body as the server actually got it — parsed when a parser matched, raw from the stream when nothing did.',
-        },
-        {
-          kind: 'demo',
-          id: 'reqres-live:methods-demo',
-          demoId: 'reqres:methods',
-          title: 'The response-methods playground',
-          description:
-            'Make the server answer with one of seven response families — json, text, a chosen status code, a 307 redirect, a security-attribute cookie, a chunked ndjson stream, an attachment — and read what comes back: the status line, the headers that family sets, the body, and the verdict naming the method that produced it.',
         },
       ],
     },

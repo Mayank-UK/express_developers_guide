@@ -445,6 +445,14 @@ async function failureDemoController(req: Request, _res: Response): Promise<void
   throw failureToException(failure(kind, \`injected demo failure of kind "\${kind}"\`));
 }`,
         },
+        {
+          kind: 'demo',
+          id: 'errors-injection:explorer-demo',
+          demoId: 'errors:explorer',
+          title: 'The error explorer: every failure kind, injectable, on demand',
+          description:
+            'Real endpoints — the taxonomy table served from the actual failure maps, a TRY button per kind firing GET /api/demo/error, the failure-injection toggle flipping GET /api/demo/status between 200 and the 503 envelope (the Result path), and the fallback branch live: a thrown plain Error (500) and a body-parser 400. Every envelope renders with its requestId checked against the x-request-id header.',
+        },
       ],
     },
     {
@@ -617,22 +625,14 @@ process.on('unhandledRejection', (reason: unknown) => {
     },
     {
       id: 'errors-live',
-      title: 'See it live (the failure explorer)',
+      title: 'The failure explorer from a terminal',
       lead:
-        'One console over the real pipeline: fire every kind in the taxonomy, flip the injection toggle, and compare the two worlds — plus the fallback branch — all rendered as envelopes.',
+        'The real pipeline over curl: fire every kind in the taxonomy, flip the injection toggle, and compare the two worlds — plus the fallback branch — all answered as envelopes.',
       blocks: [
         {
           kind: 'text',
           id: 'errors-live:intro',
-          body: `THE CONSOLE has three panels. THE TAXONOMY TABLE is served by GET /api/demo/errors/taxonomy — which does not restate the table but assembles it FROM the failure maps themselves, so the rows you click can never drift from the code that enforces them; each row's TRY button fires GET /api/demo/error?failure=<kind> and renders the result: status, the envelope pretty-printed with code, message and requestId highlighted, and a match note confirming the envelope's requestId equals the x-request-id response header — the correlation triangle in miniature. THE INJECTION PANEL is the two-worlds lesson as controls: the scenario strip shows the live toggle state; flip injectFailure (PATCH /api/demo/scenario), call GET /api/demo/status, and watch the VALUE path answer the 503 service_unavailable envelope — then fire any taxonomy row and compare: the THROW path's envelope is byte-for-byte the same shape. Same pipeline, two doors. THE FALLBACK PANEL exercises the branch the taxonomy never produces: a plain Error thrown by the middleware topic's error-path route (async throw → Express 5 forwarding → 500 internal_error with the message kept), and a malformed-JSON POST to /api/posts (body-parser reject → the generic extraction → 400 request_failed — an http-errors-style error with NO Failure inside, mapped by convention). Every result renders with its requestId; copy one into the server's log stream and you are doing the real debugging workflow. The curl block below runs the identical tour from a terminal.`,
-        },
-        {
-          kind: 'demo',
-          id: 'errors-live:explorer-demo',
-          demoId: 'errors:explorer',
-          title: 'The error explorer: every failure kind, injectable, on demand',
-          description:
-            'Real endpoints — the taxonomy table served from the actual failure maps, a TRY button per kind firing GET /api/demo/error, the failure-injection toggle flipping GET /api/demo/status between 200 and the 503 envelope (the Result path), and the fallback branch live: a thrown plain Error (500) and a body-parser 400. Every envelope renders with its requestId checked against the x-request-id header.',
+          body: `THE EXPLORER panel lives in the Failure injection section above; this tour runs the same three stops from a terminal. THE TAXONOMY TABLE is served by GET /api/demo/errors/taxonomy — which does not restate the table but assembles it FROM the failure maps themselves, so the rows you fire can never drift from the code that enforces them; each kind answers GET /api/demo/error?failure=<kind> with the result: status, the envelope with code, message and requestId, and the match confirming the envelope's requestId equals the x-request-id response header — the correlation triangle in miniature. THE INJECTION STOP is the two-worlds lesson as curls: the scenario endpoint shows the live toggle state; flip injectFailure (PATCH /api/demo/scenario), call GET /api/demo/status, and watch the VALUE path answer the 503 service_unavailable envelope — then fire any taxonomy kind and compare: the THROW path's envelope is byte-for-byte the same shape. Same pipeline, two doors. THE FALLBACK STOP exercises the branch the taxonomy never produces: a plain Error thrown by the middleware topic's error-path route (async throw → Express 5 forwarding → 500 internal_error with the message kept), and a malformed-JSON POST to /api/posts (body-parser reject → the generic extraction → 400 request_failed — an http-errors-style error with NO Failure inside, mapped by convention). Every result carries its requestId; copy one into the server's log stream and you are doing the real debugging workflow. The curl block below runs the identical tour.`,
         },
         {
           kind: 'code',

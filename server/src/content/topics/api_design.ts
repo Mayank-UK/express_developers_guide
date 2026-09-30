@@ -50,7 +50,7 @@ somebody else's spec (HTTP's), not yours to invent per endpoint.`,
         {
           kind: 'text',
           id: 'api-design-what:payoff',
-          body: `What do the kept constraints actually buy you? CACHING, because GET is defined as safe — no server state changes — so browsers, proxies and CDNs may cache it; a POST can never be cached precisely because the method's contract says it may change state. RETRIES, because idempotent methods (GET, PUT, DELETE) promise that firing twice has the same effect as once, so a client that timed out can simply retry. GENERIC TOOLING: curl, Postman, Swagger UI, load balancers, and monitoring all speak methods and status codes without knowing anything about your domain. EVOLVABILITY, because the uniform interface is a stable contract surface — new representations can be added beside old ones via content negotiation instead of replacing them.\n\nAnd the honest counterweight: the constraints have friction, which is why GraphQL (client-defined queries over one endpoint) and gRPC (typed RPC over HTTP/2) exist and are covered by their own topics later in this section. REST remains the default for public HTTP APIs because its friction is the lowest for the widest audience — any client that can make an HTTP request can use it, no schema runtime required. This topic teaches you to design that kind of API well; the posts pipeline you met in earlier topics is the running example, and the workbench at the bottom lets you exercise it — including watching it fail.`,
+          body: `What do the kept constraints actually buy you? CACHING, because GET is defined as safe — no server state changes — so browsers, proxies and CDNs may cache it; a POST can never be cached precisely because the method's contract says it may change state. RETRIES, because idempotent methods (GET, PUT, DELETE) promise that firing twice has the same effect as once, so a client that timed out can simply retry. GENERIC TOOLING: curl, Postman, Swagger UI, load balancers, and monitoring all speak methods and status codes without knowing anything about your domain. EVOLVABILITY, because the uniform interface is a stable contract surface — new representations can be added beside old ones via content negotiation instead of replacing them.\n\nAnd the honest counterweight: the constraints have friction, which is why GraphQL (client-defined queries over one endpoint) and gRPC (typed RPC over HTTP/2) exist and are covered by their own topics later in this section. REST remains the default for public HTTP APIs because its friction is the lowest for the widest audience — any client that can make an HTTP request can use it, no schema runtime required. This topic teaches you to design that kind of API well; the posts pipeline you met in earlier topics is the running example, and the workbench in the pipeline section below lets you exercise it — including watching it fail.`,
         },
         {
           kind: 'text',
@@ -320,17 +320,25 @@ async create(raw: unknown): Promise<Result<Post, Failure>> {
           id: 'api-design-pipeline:why',
           body: `Why pay five layers for one POST? Because each failure mode gets exactly one home. Bad input dies at the use case (validation), not sprinkled across handlers; infrastructure failures die at the repository (typed from real sqlite errors — a constraint violation becomes a 409 conflict, everything else a 500 with the cause attached for logs), not as raw exceptions crashing the request; transport decisions (status codes, the envelope) live at the edges where they belong; and the fake/live scenario switch works BECAUSE the controller never knew which repository answered. For API design specifically, the payoff is the single most valuable property an API can have: the CONTRACT is enforced by construction. Every path into the domain produces the same shapes, the same failures, the same envelope — there is no second code path that could 400 differently. The workbench below drives this pipeline from outside, like a client: it lists, creates, toggles the scenario, and watches the same three routes answer from fake data, live sqlite, and an injected 503 — one resource, one contract, three backend realities.`,
         },
+        {
+          kind: 'demo',
+          id: 'api-design-pipeline:workbench-demo',
+          demoId: 'api:posts-workbench',
+          title: 'The posts workbench',
+          description:
+            'A compact REST client for the posts pipeline: list with a per-response status-code critique, create with the real validation rules (201 and the 400 envelope side by side), scenario toggles for fake/live data and failure injection — and a request log recording the last ten calls you fired.',
+        },
       ],
     },
     {
       id: 'api-design-live',
-      title: 'See it live',
-      lead: 'The posts workbench — one resource across data modes and failure states: list, create, toggle fake/live, inject the 503, and read the request log like a client sees it.',
+      title: 'The pipeline from a terminal',
+      lead: 'The same three routes with nothing between you and the wire: list, create (valid + invalid), toggle fake/live, inject the 503 — and read the status lines and envelopes exactly the way a client sees them.',
       blocks: [
         {
           kind: 'text',
           id: 'api-design-live:intro',
-          body: `The workbench is a compact REST client for the pipeline you just walked. The list panel fetches GET /api/posts and renders the collection, annotating each response with a design critique — which status-code FAMILY answered and why it is the right one (2xx success, 4xx the client's fault, 5xx the server's), drawn from the same table this topic taught. The create form exercises POST with the real validation rules (title 1..120, body 1..5000, author 1..80 — send an over-long title and watch the 400 envelope arrive with field-level messages, the error design from the errors section rendered live). The scenario toggles PATCH /api/demo/scenario: flip dataMode to watch the SAME resource answer from sqlite instead of the in-memory fake (seed parity — identical rows), then switch injectFailure on and fire any request to see the 503 service_unavailable envelope — the failure that is nobody's client's fault. Every fired request lands in the request log (method, path, status, elapsed), capped at the last ten — the workbench's own miniature observability, and a reminder that APIs are judged by what clients MEASURE, not just what they parse.`,
+          body: `The interactive workbench now sits at the end of the whole-pipeline section above; this closing tour drives the same surface the raw way, from a terminal. The curl block walks the contract in order: list the collection (newest first — createdAt DESC, id DESC, the ORDER BY post_dao.ts actually runs), create a post and watch 201 arrive with the representation riding the body, then send an unknown-field body and read the 400 envelope with field-level messages — this repo answers 400 for ALL validation, from the one table in failures.ts. Finish with the failure-injection round trip: PATCH the scenario on, fire any request, and the 503 service_unavailable envelope arrives in the same shape as every other failure; switch it back off. Use curl -si for at least the first and last exchanges and read the status line and headers yourself — no critique panel, no request log, just the contract answering. That is the review habit this topic leaves you with: judge an API by what is on the wire, because that is all a client ever sees.`,
         },
         {
           kind: 'code',
@@ -358,14 +366,6 @@ curl -s -X PATCH -H 'content-type: application/json' \\
 curl -si localhost:4000/api/posts | head -12        # 503 service_unavailable
 curl -s -X PATCH -H 'content-type: application/json' \\
   -d '{"injectFailure":false}' localhost:4000/api/demo/scenario | jq`,
-        },
-        {
-          kind: 'demo',
-          id: 'api-design-live:workbench-demo',
-          demoId: 'api:posts-workbench',
-          title: 'The posts workbench',
-          description:
-            'A compact REST client for the posts pipeline: list with a per-response status-code critique, create with the real validation rules (201 and the 400 envelope side by side), scenario toggles for fake/live data and failure injection — and a request log recording the last ten calls you fired.',
         },
       ],
     },

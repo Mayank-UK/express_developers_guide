@@ -127,6 +127,14 @@ function tickerController(req: Request, res: Response): void {
           id: 'realtime-sse:ticker-design',
           body: `THE TICKER'S OWN DESIGN, because the endpoint embeds three decisions worth stealing. ONE FEED, N SUBSCRIBERS: the price, the sequence counter, and the retained history live in ONE module-level feed; each connection is just a response object writing the same frames (and the feed's interval runs at its fastest listener's pace, started by the first connection and STOPPED by the last — an idle server owns zero timers, and the /ticker-status endpoint makes that observable: connections, totalEventsSent, ring occupancy, running). The random walk starts at 100 and steps ±1 per tick with a floor at 1 — deterministic shape, random path, exactly enough "market" to be honest. INTERVALMS QUERY: ?intervalMs= (clamped 100–5000) is a demo affordance and a real pattern — stream endpoints that let clients pick a cadence MUST clamp, or one client asking for intervalMs=1 makes your server a busy-loop. VALIDATION STILL APPLIES: a garbage ?intervalMs=abc is rejected by the same ValidationException → 400 envelope as every other query param in this guide — an event stream is still an HTTP response, and its INPUT is still an HTTP request. THE DEMO below streams this exact endpoint; the curl block in the last section shows the raw frames with ids you can feed back as Last-Event-ID to watch replay happen from a terminal.`,
         },
+        {
+          kind: 'demo',
+          id: 'realtime-sse:ticker-demo',
+          demoId: 'realtime:ticker',
+          title: 'The SSE ticker: a live random-walk stream over EventSource',
+          description:
+            'Real ticks from GET /api/demo/realtime/ticker — a sparkline of the last 30 values, the seq/id/change wire payload, an intervalMs speed strip, a readyState connection chip, and a reconnect button that demonstrates (honestly) which reconnects carry Last-Event-ID and which start at "now".',
+        },
       ],
     },
     {
@@ -354,6 +362,14 @@ const chatHub: ChatHub = attachChatHub(server);
                 process.exit(0);
               });`,
         },
+        {
+          kind: 'demo',
+          id: 'realtime-websockets:chat-demo',
+          demoId: 'realtime:chat',
+          title: 'The WebSocket chat room: history, system messages, live broadcasts',
+          description:
+            'A real ws:// connection to /api/demo/realtime/chat — pick a username, connect, and watch the {type} envelopes render by kind (history muted, system italic, chat with names); the status strip polls the hub-side counters. Open a second tab and the room is real.',
+        },
       ],
     },
     {
@@ -406,30 +422,14 @@ private sendTo(ws: WebSocket, envelope: HubEnvelope): void {
     },
     {
       id: 'realtime-live',
-      title: 'See it live (ticker and chat)',
+      title: 'Ticker and chat from a terminal',
       lead:
-        'Two demos over the two real endpoints: an EventSource ticking a live sparkline you can reconnect mid-gap, and a WebSocket chat room — open it in two browser tabs and talk to yourself across the upgrade handshake.',
+        'Both real endpoints, no browser needed: raw SSE frames with ids you can feed back for replay, and a two-client WebSocket exchange.',
       blocks: [
         {
           kind: 'text',
           id: 'realtime-live:intro',
-          body: `THE TICKER DEMO is a plain EventSource against /api/demo/realtime/ticker: every tick event appends to a sparkline (last 30 values, one SVG polyline), the seq/value/change line shows the wire payload, the connection chip shows the EventSource's own readyState, and the speed strip swaps ?intervalMs= live. The RECONNECT button teaches the subtle one: it closes the source and opens a fresh one, and because Last-Event-ID only rides the browser's AUTOMATIC reconnects, a manual reopen starts at "now" — the demo marks the gap in the seq counter so you can watch the sequence skip. (Kill the server mid-stream to see the OTHER path: onerror fires, the badge flips to "reconnecting", and the moment the server returns the browser resumes ON ITS OWN — no code of yours involved.) THE CHAT DEMO connects a real WebSocket to /api/demo/realtime/chat with the username you pick: the hub's history envelope renders (muted — it is the past), join/leave system messages render (italic — it is the room talking), chats render with sender names, and the status strip polls the hub's HTTP sidecar (/chat-status — live connections, messages broadcast) — proof the registry is real. Open the SAME page in a second tab with a different username and the room is suddenly two-headed: broadcasts, join notices, history on the third arrival. THE CURL BLOCK does both from a terminal: curl -N shows the raw frames (ids and all), and a two-line node script — the ws dependency is right there — connects two clients and prints the broadcast crossing.`,
-        },
-        {
-          kind: 'demo',
-          id: 'realtime-live:ticker-demo',
-          demoId: 'realtime:ticker',
-          title: 'The SSE ticker: a live random-walk stream over EventSource',
-          description:
-            'Real ticks from GET /api/demo/realtime/ticker — a sparkline of the last 30 values, the seq/id/change wire payload, an intervalMs speed strip, a readyState connection chip, and a reconnect button that demonstrates (honestly) which reconnects carry Last-Event-ID and which start at "now".',
-        },
-        {
-          kind: 'demo',
-          id: 'realtime-live:chat-demo',
-          demoId: 'realtime:chat',
-          title: 'The WebSocket chat room: history, system messages, live broadcasts',
-          description:
-            'A real ws:// connection to /api/demo/realtime/chat — pick a username, connect, and watch the {type} envelopes render by kind (history muted, system italic, chat with names); the status strip polls the hub-side counters. Open a second tab and the room is real.',
+          body: `THE INTERACTIVE VERSIONS live in their sections above — the EventSource ticker at the end of the SSE section, the chat room at the end of the WebSockets section. The curl block below drives the same two endpoints from a terminal. curl -N shows the raw tick frames — ids that ARE the seqs — and feeding one back as Last-Event-ID makes the server REPLAY the retained gap; watch /ticker-status as your curl exits and connections drop to 0 (the abort-detection discipline, observable). THE WEBSOCKET HALF runs with the ws dependency already installed: a two-line node script connects two real clients and prints one broadcast crossing between them, the stray-upgrade curl shows a declined upgrade answered at the socket level (404, then destroyed), and /chat-status is the hub's HTTP sidecar — live connections and messages broadcast — the status window, because upgrades bypass Express entirely.`,
         },
         {
           kind: 'code',

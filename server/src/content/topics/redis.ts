@@ -116,7 +116,7 @@ function attemptConnection(role: 'commands' | 'subscriber'): Promise<Redis | nul
     {
       id: 'redis-structures',
       title: 'The core structures',
-      lead: 'Five server-side types carry almost every Redis workload. Each row below is a REAL command with its REAL reply from this guide\'s tour — the demo at the bottom runs them live.',
+      lead: 'Five server-side types carry almost every Redis workload. Each row below is a REAL command with its REAL reply from this guide\'s tour — the demo below runs them live.',
       blocks: [
         {
           kind: 'text',
@@ -167,12 +167,20 @@ const flat = await client.zrange(\`\${REDIS_DEMO_NAMESPACE}leaderboard\`, 0, '-1
 // → [{ member: "grace", score: "250" }, { member: "linus", score: "180" },
 //    { member: "ada", score: "100" }]`,
         },
+        {
+          kind: 'demo',
+          id: 'redis-structures:playground-demo',
+          demoId: 'redis:playground',
+          title: 'The redis playground',
+          description:
+            'Live connection status of the optional redis service, the structure tour as a command→reply transcript, a 10-second TTL key you can watch count down and vanish, and pub/sub with the server\'s own second connection as the proof of delivery. With Redis off: the exact command that turns it on.',
+        },
       ],
     },
     {
       id: 'redis-ttl',
       title: 'TTL and expiry',
-      lead: 'Every key can carry its own death sentence: SET ... EX seconds (or EXPIRE after the fact), TTL to read what remains, PERSIST to pardon. The SERVER enforces it — no cron, no sweep job in your app. The demo below watches a key count down to nothing.',
+      lead: 'Every key can carry its own death sentence: SET ... EX seconds (or EXPIRE after the fact), TTL to read what remains, PERSIST to pardon. The SERVER enforces it — no cron, no sweep job in your app. The playground\'s TTL panel (the core-structures section above) watches a key count down to nothing.',
       blocks: [
         {
           kind: 'text',
@@ -306,21 +314,13 @@ export async function releaseIfStillOurs(client: Redis, key: string, token: stri
     },
     {
       id: 'redis-live',
-      title: 'See it live',
-      lead: 'One playground, every concept: the status of the optional connection, the structure tour as a real command→reply transcript, a TTL you watch count down to nothing, and pub/sub proving itself through the server\'s own second connection. Needs the optional redis service — and gracefully says so when it is missing.',
+      title: 'The tour from a terminal',
+      lead: 'The playground\'s endpoints driven from a terminal (the interactive panel lives in the core-structures section above): the status of the optional connection, the structure tour as a real command→reply transcript, a TTL you watch count down to nothing, and pub/sub proving itself through the server\'s own second connection. Needs the optional redis service — and gracefully says so when it is missing.',
       blocks: [
         {
           kind: 'text',
           id: 'redis-live:intro',
-          body: `THE SERVICE IS OPTIONAL, like Mongo before it: without REDIS_URL (or with the container down), the status chip reports OFF with the exact command that turns it on — docker compose -f .docker/docker-compose.yml up -d redis — and the data endpoints answer the canonical 503 envelope while nothing else in the guide notices. WITH THE SERVICE UP: STRUCTURES runs the tour — every command and its REAL reply, grouped by family, including the SADD that adds only "docker" because "redis" was already a member, and the sorted set's ranked reply. TTL sets a key with a 10-second death sentence, then WATCH polls it every second — a bar emptying, a counter going 9, 8, 7 … until exists flips to false and the key is gone (the server did that; no code of ours ran). PUB/SUB publishes to the demo channel and shows what came back: PUBLISH's receiver count, whether this server's OWN subscriber (its real second connection, subscribed before you published) received it, and the ring of recent messages — channel, message, and the moment it landed. The curl block drives the same loop from a terminal.`,
-        },
-        {
-          kind: 'demo',
-          id: 'redis-live:playground-demo',
-          demoId: 'redis:playground',
-          title: 'The redis playground',
-          description:
-            'Live connection status of the optional redis service, the structure tour as a command→reply transcript, a 10-second TTL key you can watch count down and vanish, and pub/sub with the server\'s own second connection as the proof of delivery. With Redis off: the exact command that turns it on.',
+          body: `THE SERVICE IS OPTIONAL, like Mongo before it: without REDIS_URL (or with the container down), the status endpoint reports OFF with the exact command that turns it on — docker compose -f .docker/docker-compose.yml up -d redis — and the data endpoints answer the canonical 503 envelope while nothing else in the guide notices. WITH THE SERVICE UP, the curl block below drives the playground's endpoints (the panel itself lives in the core-structures section above): the TOUR runs every command with its REAL reply, grouped by family, including the SADD that adds only "docker" because "redis" was already a member, and the sorted set's ranked reply. TTL sets a key with a 10-second death sentence, then polling reads it back every second — a counter going 9, 8, 7 … until exists flips to false and the key is gone (the server did that; no code of ours ran). PUB/SUB publishes to the demo channel and shows what came back: PUBLISH's receiver count, whether this server's OWN subscriber (its real second connection, subscribed before you published) received it, and the ring of recent messages — channel, message, and the moment it landed.`,
         },
         {
           kind: 'code',

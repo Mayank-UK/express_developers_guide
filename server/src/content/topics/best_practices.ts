@@ -377,18 +377,26 @@ export const MAX_SESSIONS = 100;
 
 // vs the smell: history.push(event) with no cap is a leak wearing a feature's clothes.`,
         },
+        {
+          kind: 'demo',
+          id: 'best-anti-checklist:demo',
+          demoId: 'best:checklist',
+          title: 'The self-audit',
+          description:
+            'The app grades itself against this checklist LIVE: real headers via self-fetch, real process listeners (SIGTERM, fatal handlers), a real source-grep of the DAO for bound parameters — every check with pass/warn/fail status and the evidence it graded itself on.',
+        },
       ],
     },
     {
       id: 'best-see-it-live',
-      title: 'See it live',
+      title: 'The self-audit from a terminal',
       lead:
-        'The self-audit: the running app checks itself against this checklist — real headers, real listeners, real source — and grades the result.',
+        'The self-audit over curl: the running app checks itself against this checklist — real headers, real listeners, real source — and grades the result.',
       blocks: [
         {
           kind: 'text',
           id: 'best-see-it-live:what-you-see',
-          body: `THE DEMO IS THE CAPSTONE'S PROOF: \`GET /api/demo/best/audit\` makes the app grade ITSELF. The checks are real signals, not a hardcoded report card: helmet's headers and the request-id read off a LIVE self-fetch of /api/health (the same make-noise pattern the observability topic uses — and if nothing is listening at this origin, those checks degrade to WARN with an honest note, never a lie, never a 500); the 404 envelope shape proven by a real self-fetch of a route that doesn't exist; compression verified SCOPED (the health answer stays identity because the perf router owns compression deliberately — a pass, with the reasoning in the evidence); sqlite parameterization audited by reading the DAO's own source from disk and grepping for bound placeholders (a static heuristic, labeled as one); graceful shutdown and fatal handlers verified by REAL process introspection — \`process.listenerCount('SIGTERM') > 0\` and the uncaughtException/unhandledRejection listeners the observability topic added; docs served, content versioned, rate limits configured, the log ring live — each with its evidence string. Run it against \`npm run dev\` and the whole board goes green where the app deserves it; the point is not this app's score, it's that a CHECKLIST YOU CAN EXECUTE is worth ten you can only read. Or script it:`,
+          body: `THE SELF-AUDIT IS THE CAPSTONE'S PROOF (the interactive board now lives beside the anti-checklist above): \`GET /api/demo/best/audit\` makes the app grade ITSELF. The checks are real signals, not a hardcoded report card: helmet's headers and the request-id read off a LIVE self-fetch of /api/health (the same make-noise pattern the observability topic uses — and if nothing is listening at this origin, those checks degrade to WARN with an honest note, never a lie, never a 500); the 404 envelope shape proven by a real self-fetch of a route that doesn't exist; compression verified SCOPED (the health answer stays identity because the perf router owns compression deliberately — a pass, with the reasoning in the evidence); sqlite parameterization audited by reading the DAO's own source from disk and grepping for bound placeholders (a static heuristic, labeled as one); graceful shutdown and fatal handlers verified by REAL process introspection — \`process.listenerCount('SIGTERM') > 0\` and the uncaughtException/unhandledRejection listeners the observability topic added; docs served, content versioned, rate limits configured, the log ring live — each with its evidence string. Run it against \`npm run dev\` and the whole board goes green where the app deserves it; the point is not this app's score, it's that a CHECKLIST YOU CAN EXECUTE is worth ten you can only read. Or script it:`,
         },
         {
           kind: 'code',
@@ -403,14 +411,6 @@ curl -s localhost:4000/api/demo/best/audit | python3 -m json.tool
 curl -s localhost:4000/api/demo/best/audit \\
   | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["summary"]); \\
     [print(c["status"].upper().ljust(4), c["id"], "—", c["evidence"]) for c in d["checks"]]'`,
-        },
-        {
-          kind: 'demo',
-          id: 'best-see-it-live:demo',
-          demoId: 'best:checklist',
-          title: 'The self-audit',
-          description:
-            'The app grades itself against this checklist LIVE: real headers via self-fetch, real process listeners (SIGTERM, fatal handlers), a real source-grep of the DAO for bound parameters — every check with pass/warn/fail status and the evidence it graded itself on.',
         },
       ],
     },

@@ -186,6 +186,14 @@ const loopP99Ms =
   loopMeanMs;
 // …mean/p99/max land in the response's eventLoopDelayMs object…`,
         },
+        {
+          kind: 'demo',
+          id: 'debug-event-loop:demo',
+          demoId: 'debug:stall',
+          title: 'The event-loop stall, diagnosed live',
+          description:
+            'Read the real loop-delay histogram, stall it for 300ms with synchronous work, watch the spike land in three polls — then run the same workload sliced across setImmediate ticks and watch nothing move.',
+        },
       ],
     },
     {
@@ -253,14 +261,14 @@ function syncFeedTimer(): void {
     },
     {
       id: 'debug-see-it-live',
-      title: 'See it live',
+      title: 'The stall diagnosis from a terminal',
       lead:
-        'Stall the event loop yourself, watch the histogram catch it, then run the same workload the deferred way and watch it not care.',
+        'Stall the event loop from a terminal, watch the histogram catch it, then run the same workload the deferred way and watch it not care.',
       blocks: [
         {
           kind: 'text',
           id: 'debug-see-it-live:what-you-see',
-          body: `THE DEMO wires three EXISTING endpoints into one diagnosis: (1) BASELINE — GET /api/demo/obs/metrics reads the real monitorEventLoopDelay histogram (mean + max) before anything is disturbed. (2) STALL — fire GET /api/demo/node/blocking?workMs=300 (a synchronous hash marathon that owns the loop for ~300ms), then poll the metrics endpoint three times, half a second apart: the histogram's max JUMPS to ≥300ms on the first poll and stays flat after (the histogram is cumulative — the jump is the stall being absorbed; flat later polls mean no NEW stalls), and the blocking endpoint itself reports its setImmediate-probe measurement — the direct evidence that every concurrent request waited out the stall. The verdict line names it. (3) CONTROL — the SAME 300ms of hashing through GET /api/demo/node/deferred?workMs=300, sliced into 10ms setImmediate ticks: the probe reads ≈ one slice, the histogram does not move — the diagnosis, the cause, and the fix, all three in one panel. Or drive it from a terminal:`,
+          body: `THE TOUR wires three EXISTING endpoints into one diagnosis (the interactive panel lives in the Event-loop diagnosis section above): (1) BASELINE — GET /api/demo/obs/metrics reads the real monitorEventLoopDelay histogram (mean + max) before anything is disturbed. (2) STALL — fire GET /api/demo/node/blocking?workMs=300 (a synchronous hash marathon that owns the loop for ~300ms), then poll the metrics endpoint three times, half a second apart: the histogram's max JUMPS to ≥300ms on the first poll and stays flat after (the histogram is cumulative — the jump is the stall being absorbed; flat later polls mean no NEW stalls), and the blocking endpoint itself reports its setImmediate-probe measurement — the direct evidence that every concurrent request waited out the stall. The verdict line names it. (3) CONTROL — the SAME 300ms of hashing through GET /api/demo/node/deferred?workMs=300, sliced into 10ms setImmediate ticks: the probe reads ≈ one slice, the histogram does not move — the diagnosis, the cause, and the fix, all three in one tour. Drive it from a terminal:`,
         },
         {
           kind: 'code',
@@ -271,14 +279,6 @@ function syncFeedTimer(): void {
 curl -s 'localhost:4000/api/demo/node/blocking?workMs=300'   # → {"mode":"blocking","workMs":300,"eventLoopDelayMs":~300}
 curl -s localhost:4000/api/demo/obs/metrics | grep -o '"max":[0-9.]*'   # the jump
 curl -s 'localhost:4000/api/demo/node/deferred?workMs=300'   # → the control: eventLoopDelayMs ≈ 10`,
-        },
-        {
-          kind: 'demo',
-          id: 'debug-see-it-live:demo',
-          demoId: 'debug:stall',
-          title: 'The event-loop stall, diagnosed live',
-          description:
-            'Read the real loop-delay histogram, stall it for 300ms with synchronous work, watch the spike land in three polls — then run the same workload sliced across setImmediate ticks and watch nothing move.',
         },
       ],
     },

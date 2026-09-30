@@ -178,6 +178,14 @@ const naiveQuery = \`SELECT id, title, author FROM posts WHERE title = '\${attem
 //       naiveQuery: "SELECT … WHERE title = '' OR '1'='1'",  ← INERT display
 //       verdict: "the payload was compared as a literal title — nothing matched" }`,
         },
+        {
+          kind: 'demo',
+          id: 'db-node-parameters:safety-demo',
+          demoId: 'db:sql-safety',
+          title: 'Injection and atomicity',
+          description:
+            "Two proofs side by side: fire the classic SQL-injection payload at a parameterized lookup (zero rows, the naive form shown inert), and run the tag transfer with and without a crash between its two writes — crash rolls both back, and before/after counts prove atomicity.",
+        },
       ],
     },
     {
@@ -188,7 +196,7 @@ const naiveQuery = \`SELECT id, title, author FROM posts WHERE title = '\${attem
         {
           kind: 'text',
           id: 'db-node-transactions:atomicity',
-          body: `THE PROMISE: BEGIN, write, write, COMMIT — and either every write is durable or none is; anything thrown before COMMIT triggers ROLLBACK, restoring the database to the instant before BEGIN. WITHOUT that promise, every multi-write operation is a RACE against crashes: "remove the tag from post A, then add it to post B" done as two bare writes is two moments where the data is WRONG (tag on neither post after a crash between them, tag on both if the order were reversed) — and every invariant you declared in the schema topic ("comment_count equals COUNT(comments)") is unenforceable across statements. WITH it, the two writes become ONE fact. WHEN TRANSACTIONS MATTER: any multi-write invariant (move X between rows — the demo; insert order + order_items; update a counter and its audit row), any read-modify-write over multiple statements that must not interleave, and bulk loads (one transaction per few hundred rows is orders of magnitude faster than per-row commits, because each commit is an fsync). WHEN THEY DO NOT: a single INSERT/UPDATE/DELETE is already atomic by itself — wrapping one statement in a transaction buys nothing. better-sqlite3'S API is the friendliest in the ecosystem: db.transaction(fn) returns a wrapped function; call it and the fn's statements run inside BEGIN…COMMIT, and if fn THROWS, the wrapper rolls back and re-throws — which is why the transfer demo can simulate a crash by simply throwing between its two writes (below, live: crash=1 rolls back the DELETE too, and the before/after counts come back IDENTICAL, which is atomicity made visible). Two SQLite specifics worth knowing: the handle is one connection, so a transaction HOLDS the write lock — keep them short; and nested db.transaction() calls are supported via savepoints, but in this repo's size of code the flat kind is all you need.`,
+          body: `THE PROMISE: BEGIN, write, write, COMMIT — and either every write is durable or none is; anything thrown before COMMIT triggers ROLLBACK, restoring the database to the instant before BEGIN. WITHOUT that promise, every multi-write operation is a RACE against crashes: "remove the tag from post A, then add it to post B" done as two bare writes is two moments where the data is WRONG (tag on neither post after a crash between them, tag on both if the order were reversed) — and every invariant you declared in the schema topic ("comment_count equals COUNT(comments)") is unenforceable across statements. WITH it, the two writes become ONE fact. WHEN TRANSACTIONS MATTER: any multi-write invariant (move X between rows — the demo; insert order + order_items; update a counter and its audit row), any read-modify-write over multiple statements that must not interleave, and bulk loads (one transaction per few hundred rows is orders of magnitude faster than per-row commits, because each commit is an fsync). WHEN THEY DO NOT: a single INSERT/UPDATE/DELETE is already atomic by itself — wrapping one statement in a transaction buys nothing. better-sqlite3'S API is the friendliest in the ecosystem: db.transaction(fn) returns a wrapped function; call it and the fn's statements run inside BEGIN…COMMIT, and if fn THROWS, the wrapper rolls back and re-throws — which is why the transfer demo can simulate a crash by simply throwing between its two writes (live, in the demo above: crash=1 rolls back the DELETE too, and the before/after counts come back IDENTICAL, which is atomicity made visible). Two SQLite specifics worth knowing: the handle is one connection, so a transaction HOLDS the write lock — keep them short; and nested db.transaction() calls are supported via savepoints, but in this repo's size of code the flat kind is all you need.`,
         },
         {
           kind: 'code',
@@ -268,6 +276,14 @@ CREATE TABLE posts_tags (
           caption: 'Verbatim — the second (server/src/data/migrations/0002_add_indexes.sql): indexes arrive as their OWN ordered step, never as edits to 0001',
           code: `CREATE INDEX idx_posts_tags_tag_id ON posts_tags(tag_id);
 CREATE INDEX idx_tags_name ON tags(name);`,
+        },
+        {
+          kind: 'demo',
+          id: 'db-node-migrations:migrations-demo',
+          demoId: 'db:migrations',
+          title: 'The migration runner',
+          description:
+            'A fresh demo handle, the real runner, and the full state machine: all eight .sql files pending, APPLY running them in order, and a second apply that does nothing — plus the tables and indexes each step really created.',
         },
       ],
     },
@@ -732,29 +748,13 @@ curl -s 'localhost:4000/api/demo/db/audit/post' | jq '.rows | length'`,
     },
     {
       id: 'db-node-live',
-      title: 'See it live',
-      lead: 'Three real proofs over real in-memory handles: the migration runner\'s pending → applied → idempotent replay state machine, a parameterized lookup shrugging off the classic injection payload, and a transaction that crashes between its two writes and rolls back both.',
+      title: 'From a terminal: migrations, injection, and the crash',
+      lead: 'The terminal companion to the three proofs whose interactive panels now live in their teaching sections above: the migration runner\'s pending → applied → idempotent replay state machine, a parameterized lookup shrugging off the classic injection payload, and a transaction that crashes between its two writes and rolls back both.',
       blocks: [
         {
           kind: 'text',
           id: 'db-node-live:intro',
-          body: `Every demo below runs against a FRESH :memory: SQLite handle built per request — the guide's real guide.db is never opened by these endpoints. THE MIGRATION DEMO drives the real runner from server/src/data/migrations: a fresh handle first shows all eight .sql files PENDING (applied is empty); APPLY runs them in name order, and the response carries before/after plus a SECOND run whose appliedThisRun is empty — the idempotency proof that lets boot call the runner unconditionally — alongside the tables and indexes the DDL actually created. THE INJECTION PANEL fires whatever payload you type (prefilled with the classic ' OR '1'='1) at a real parameterized lookup: the attempt is bound as the ? parameter, comes back echoed as boundParameter, and matches ZERO rows — while the response also displays the NAIVE concatenated query as inert text, the thing the parameterization made impossible. Type a real post title instead and it matches exactly that row: the lookup is real, the injection is not. THE TRANSACTION PANEL runs the tag move from the transactions section: TRANSFER commits both writes (the tag visibly moves from post-alpha to post-beta in the before/after counts); TRANSFER WITH CRASH throws between the DELETE and the INSERT on purpose, the endpoint catches it, and both writes roll back — before and after counts IDENTICAL, transferred: false, rolledBack: true, HTTP 200, because observing a rollback is the successful outcome of the experiment. The curl block drives all three from a terminal.`,
-        },
-        {
-          kind: 'demo',
-          id: 'db-node-live:migrations-demo',
-          demoId: 'db:migrations',
-          title: 'The migration runner',
-          description:
-            'A fresh demo handle, the real runner, and the full state machine: all eight .sql files pending, APPLY running them in order, and a second apply that does nothing — plus the tables and indexes each step really created.',
-        },
-        {
-          kind: 'demo',
-          id: 'db-node-live:safety-demo',
-          demoId: 'db:sql-safety',
-          title: 'Injection and atomicity',
-          description:
-            "Two proofs side by side: fire the classic SQL-injection payload at a parameterized lookup (zero rows, the naive form shown inert), and run the tag transfer with and without a crash between its two writes — crash rolls both back, and before/after counts prove atomicity.",
+          body: `Every endpoint below runs against a FRESH :memory: SQLite handle built per request — the guide's real guide.db is never opened by these endpoints. THE MIGRATION TOUR drives the real runner from server/src/data/migrations: a fresh handle first shows all eight .sql files PENDING (applied is empty); APPLY runs them in name order, and the response carries before/after plus a SECOND run whose appliedThisRun is empty — the idempotency proof that lets boot call the runner unconditionally — alongside the tables and indexes the DDL actually created. THE INJECTION ENDPOINT fires whatever payload you send (the curl tour uses the classic ' OR '1'='1) at a real parameterized lookup: the attempt is bound as the ? parameter, comes back echoed as boundParameter, and matches ZERO rows — while the response also displays the NAIVE concatenated query as inert text, the thing the parameterization made impossible. Send a real post title instead and it matches exactly that row: the lookup is real, the injection is not. THE TRANSACTION ENDPOINT runs the tag move from the transactions section: TRANSFER commits both writes (the tag visibly moves from post-alpha to post-beta in the before/after counts); TRANSFER WITH CRASH throws between the DELETE and the INSERT on purpose, the endpoint catches it, and both writes roll back — before and after counts IDENTICAL, transferred: false, rolledBack: true, HTTP 200, because observing a rollback is the successful outcome of the experiment. The curl block drives all three from a terminal.`,
         },
         {
           kind: 'code',

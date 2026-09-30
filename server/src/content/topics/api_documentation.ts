@@ -261,6 +261,14 @@ docsRouter.use(DOCS_UI_PATH, swaggerServe, swaggerSetup(openApiDocument));
           id: 'api-docs-serving:production',
           body: `Production questions worth deciding before someone else decides them for you. SHOULD DOCS BE PUBLIC? For a public API, yes — docs are marketing and onboarding; for an internal or partner API, gate them behind the same auth as everything else (the auth topics' middleware slots in front of docsRouter like any other router). SHOULD THE SPEC MOVE WITH VERSIONS? If you adopt /api/v1 path versioning, serve /docs/v1/openapi.json and /docs/v2/openapi.json — Swagger UI handles multiple documents via the dropdown (swaggerUrls). SHOULD THE SPEC BE PART OF THE REPO? Yes — it is source code in exactly the way tests are: reviewed in PRs, versioned in git, diffable between releases. And keep the spec MACHINE-FETCHABLE in every environment (this app's /docs/openapi.json), because the moment it is, your CI can pull it, lint it, diff it against main, and run contract tests against it — the entire honesty machinery of the next section depends on the spec being reachable as DATA, not just renderable as a page.`,
         },
+        {
+          kind: 'demo',
+          id: 'api-docs-serving:docs-link-demo',
+          demoId: 'api:docs-link',
+          title: 'Open the API docs',
+          description:
+            'Links to this app\'s live Swagger UI at /docs (try-it-out included) and to the raw OpenAPI document at /docs/openapi.json — the tested contract behind everything this topic showed.',
+        },
       ],
     },
     {
@@ -362,13 +370,13 @@ webhooks     (channels + payloads      schema registry (JSON Schema /
     },
     {
       id: 'api-docs-live',
-      title: 'See it live',
-      lead: 'The app you are reading serves its own spec at /docs — Swagger UI over the real, tested document. Open a tab and try it out.',
+      title: 'The docs surface from a terminal',
+      lead: 'The app you are reading serves its own spec at /docs — Swagger UI over the real, tested document. The link lives in the serving section above; this tour reads the same surface the way tools do.',
       blocks: [
         {
           kind: 'text',
           id: 'api-docs-live:intro',
-          body: `The demo below links straight to this app's documentation surface — no mock, no separate docs deployment: the same process serving /api/posts serves the pages describing it. Be precise about what you will find at /docs, because this app is honest about its own scope: the document covers the CORE resource surface (health, content, posts, scenario) plus two representative non-CRUD entries (/api/demo/error, showing how a failure-injection endpoint documents its response statuses; /api/graphql, showing a POST-only non-REST contract) — grouped by tag (health, content, posts, demo, graphql), every path with its parameters, request bodies, response schemas, and the reusable error envelope. The ~25 teaching route groups under /api/demo/** are deliberately NOT mirrored there: their contract is pedagogical and documented by their own topic screens and curl tours, and the document's info section says exactly that — a spec that quietly under-covers its API is lying by omission, while a spec that STATES its scope is trustworthy. Use TRY IT OUT on GET /api/posts right in the UI; toggle failure injection first (PATCH /api/demo/scenario in the same page) and try it again to watch the documented 503 envelope arrive as described. The raw JSON link (/docs/openapi.json) is the same contract as data — feed it to a generator, a linter, or jq. The point to take away: none of this is a documentation DEPLOYMENT; it is one object, one router, and one mount line beside the code it describes — close enough that drift shows up in a code review, and tested so it shows up in CI even when review misses it.`,
+          body: `The link panel at the end of the serving section above opens the interactive surface in a browser tab — no mock, no separate docs deployment: the same process serving /api/posts serves the pages describing it. Be precise about what you will find at /docs, because this app is honest about its own scope: the document covers the CORE resource surface (health, content, posts, scenario) plus two representative non-CRUD entries (/api/demo/error, showing how a failure-injection endpoint documents its response statuses; /api/graphql, showing a POST-only non-REST contract) — grouped by tag (health, content, posts, demo, graphql), every path with its parameters, request bodies, response schemas, and the reusable error envelope. The ~25 teaching route groups under /api/demo/** are deliberately NOT mirrored there: their contract is pedagogical and documented by their own topic screens and curl tours, and the document's info section says exactly that — a spec that quietly under-covers its API is lying by omission, while a spec that STATES its scope is trustworthy. The curl block below walks the surface as data instead: fetch the rendered page and its title, watch /docs answer 301 to /docs/ (the trailing slash the relative assets need), then pull /docs/openapi.json through jq — the info block, the paths (exactly the nine documented), and the error envelope's canonical keys. That last pipe is the whole tooling story of this topic in one line: a machine-fetchable spec is a spec your CI can lint, diff, and contract-test. The point to take away: none of this is a documentation DEPLOYMENT; it is one object, one router, and one mount line beside the code it describes — close enough that drift shows up in a code review, and tested so it shows up in CI even when review misses it.`,
         },
         {
           kind: 'code',
@@ -391,14 +399,6 @@ curl -s localhost:4000/docs/openapi.json | jq '.paths | keys'
 # the reusable error envelope every documented error points at:
 curl -s localhost:4000/docs/openapi.json | jq '.components.schemas.Error.properties.error.properties | keys'
 # ["code", "fields", "message", "requestId"]`,
-        },
-        {
-          kind: 'demo',
-          id: 'api-docs-live:docs-link-demo',
-          demoId: 'api:docs-link',
-          title: 'Open the API docs',
-          description:
-            'Links to this app\'s live Swagger UI at /docs (try-it-out included) and to the raw OpenAPI document at /docs/openapi.json — the tested contract behind everything this topic showed.',
         },
       ],
     },

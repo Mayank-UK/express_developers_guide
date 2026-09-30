@@ -115,6 +115,14 @@ export function parseAcceptLanguage(header: string): LanguageRange[] {
   return { locale: def, matchedVia: 'default', considered };
 }`,
         },
+        {
+          kind: 'demo',
+          id: 'i18n-accept-language:negotiator-demo',
+          demoId: 'i18n:negotiator',
+          title: 'The i18n negotiator: Accept-Language in, matched locale + localized payload out',
+          description:
+            'Drive the real Accept-Language negotiator: type a header (or send your browser\u2019s own), see the matched locale, the match-ladder verdict (exact / primary / wildcard / default), the parsed ranges in order, the localized dictionary with CLDR plural categories, and frozen-instant Intl formats — then compare locales directly and see the same instant and numbers formatted in all three locales, computed client-side.',
+        },
       ],
     },
     {
@@ -244,22 +252,14 @@ const currency = new Intl.NumberFormat(locale, { style: 'currency', currency: 'E
     },
     {
       id: 'i18n-live',
-      title: 'See it live (the negotiator)',
+      title: 'The negotiator from a terminal',
       lead:
         'Two panels over the real code: an Accept-Language field that drives the actual negotiator (matched-locale badge, match-ladder verdict, localized messages, frozen-instant formats), and a formats lab that renders the same instant and number in all three locales — computing in YOUR browser, teaching that formatting is edge work.',
       blocks: [
         {
           kind: 'text',
           id: 'i18n-live:intro',
-          body: `THE LAB'S TWO PANELS. NEGOTIATOR: an Accept-Language field (prefilled 'de-AT,ja;q=0.8,en;q=0.5') fires GET /api/demo/i18n/negotiate with that exact header — the same parse-and-match ladder the topic walked — and renders the verdict: the matched locale, the matchedVia badge (exact / primary / wildcard / default), the parsed ranges in consideration order (q-sorted, wildcard last), the localized messages (greeting, farewell, the one-vs-three plural examples with their CLDR categories, the relative uploadedAt, the localized price), and the frozen-instant format table for the result locale. The "use my browser's languages" button fills the field from navigator.languages — what your browser actually sends on every request — and a direct en|de|ja strip hits ?locale= for explicit comparison: notice 'de-AT' negotiates to de but is a 400 as an explicit choice, the two endpoints' jobs in one click. FORMATS LAB: pick a locale and the same frozen instant (2026-09-28T09:15:00Z) and the same numbers render side by side in all three locales — computed in YOUR browser with the same Intl APIs, next to the server's values for the chosen locale. They agree (same ICU data both sides — the quiet lesson: the canonical instant plus Intl at the edge is reproducible everywhere), and the panel says when they would not: divergent ICU versions or an unpinned time zone. The curl block below drives the same surface from a terminal.`,
-        },
-        {
-          kind: 'demo',
-          id: 'i18n-live:negotiator-demo',
-          demoId: 'i18n:negotiator',
-          title: 'The i18n negotiator: Accept-Language in, matched locale + localized payload out',
-          description:
-            'Drive the real Accept-Language negotiator: type a header (or send your browser\u2019s own), see the matched locale, the match-ladder verdict (exact / primary / wildcard / default), the parsed ranges in order, the localized dictionary with CLDR plural categories, and frozen-instant Intl formats — then compare locales directly and see the same instant and numbers formatted in all three locales, computed client-side.',
+          body: `THE LAB'S TWO PANELS (the interactive lab now lives beside the Accept-Language negotiation section above). NEGOTIATOR: an Accept-Language field (prefilled 'de-AT,ja;q=0.8,en;q=0.5') fires GET /api/demo/i18n/negotiate with that exact header — the same parse-and-match ladder the topic walked — and renders the verdict: the matched locale, the matchedVia badge (exact / primary / wildcard / default), the parsed ranges in consideration order (q-sorted, wildcard last), the localized messages (greeting, farewell, the one-vs-three plural examples with their CLDR categories, the relative uploadedAt, the localized price), and the frozen-instant format table for the result locale. The "use my browser's languages" button fills the field from navigator.languages — what your browser actually sends on every request — and a direct en|de|ja strip hits ?locale= for explicit comparison: notice 'de-AT' negotiates to de but is a 400 as an explicit choice, the two endpoints' jobs in one click. FORMATS LAB: pick a locale and the same frozen instant (2026-09-28T09:15:00Z) and the same numbers render side by side in all three locales — computed in YOUR browser with the same Intl APIs, next to the server's values for the chosen locale. They agree (same ICU data both sides — the quiet lesson: the canonical instant plus Intl at the edge is reproducible everywhere), and the panel says when they would not: divergent ICU versions or an unpinned time zone. The curl block below drives the same surface from a terminal.`,
         },
         {
           kind: 'code',

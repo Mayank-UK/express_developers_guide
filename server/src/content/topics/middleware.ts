@@ -103,6 +103,14 @@ next(err) or throws               everything skipped until a 4-arg error
                                   middleware is found (or Express's default)
 neither responds nor calls next   the request HANGS — Express will not guess`,
         },
+        {
+          kind: 'demo',
+          id: 'mw-model:demo',
+          demoId: 'middleware:pipeline',
+          title: 'The pipeline visualizer',
+          description:
+            'Three runs of the same real stack. Happy path lights logger → auth → validator → handler in order; short-circuit stops the chain at auth with a 401 envelope beside it; the error path lights error-handler and returns the canonical 500 envelope — the trace rides the x-pipeline header when the body belongs to the error.',
+        },
       ],
     },
     {
@@ -408,13 +416,13 @@ export function requestLoggerMiddleware(req: Request, res: Response, next: NextF
     },
     {
       id: 'mw-live',
-      title: 'See it live',
-      lead: 'A pipeline you can misroute on purpose: three runs of a real four-layer stack — happy path, short-circuit, and error — each rendered as the exact chain that ran.',
+      title: 'Drive the pipeline from a terminal',
+      lead: 'The same four-layer stack, no browser needed: three curls — happy path, short-circuit, and error — each answering with the exact chain that ran.',
       blocks: [
         {
           kind: 'text',
           id: 'mw-live:intro',
-          body: `Every button below fires a real request through the demo router's stack — logger, auth, validator, handler — where each layer appends a timestamped entry to a per-request trace. The happy path runs all four and lights every card in order, with per-stage elapsed times measured from the first middleware's clock. The short-circuit run shows the auth layer taking exit 2: it answers 401 itself (the canonical envelope, requestId included) and never calls next(), so the validator and handler cards go dark and the chain visibly stops at auth. The error-path run shows exits 3 and the 4-arg machinery: the async handler throws, a router-level error middleware appends 'error-handler' to the trace and rethrows, and the app's global error handler renders the 500 envelope. On the error runs the trace travels in the x-pipeline response header — the body belongs to the error envelope — which is exactly why the demo reads both.`,
+          body: `The interactive pipeline visualizer lives at the end of "The middleware model" section above; the curls below run the same three journeys through the same stack — logger, auth, validator, handler — where each layer appends a timestamped entry to a per-request trace. The happy path runs all four: four stamped stages in the body, with per-stage elapsed times measured from the first middleware's clock. The short-circuit curl shows the auth layer taking exit 2: it answers 401 itself (the canonical envelope, requestId included) and never calls next(), so the x-pipeline trace stops after 'short-circuit' — no validator, no handler. The error-path curl shows exit 3 and the 4-arg machinery: the async handler throws, a router-level error middleware appends 'error-handler' to the trace and rethrows, and the app's global error handler renders the 500 envelope. On the error run the trace travels in the x-pipeline response header — the body belongs to the error envelope — which is exactly why -i is on every curl below.`,
         },
         {
           kind: 'code',
@@ -431,14 +439,6 @@ curl -si localhost:4000/api/demo/middleware/short-circuit | head -20
 # The handler throws (async): 'error-handler' is appended, the error is
 # rethrown to the GLOBAL handler, and the 500 envelope comes back canonical:
 curl -si localhost:4000/api/demo/middleware/error-path | head -20`,
-        },
-        {
-          kind: 'demo',
-          id: 'mw-live:demo',
-          demoId: 'middleware:pipeline',
-          title: 'The pipeline visualizer',
-          description:
-            'Three runs of the same real stack. Happy path lights logger → auth → validator → handler in order; short-circuit stops the chain at auth with a 401 envelope beside it; the error path lights error-handler and returns the canonical 500 envelope — the trace rides the x-pipeline header when the body belongs to the error.',
         },
       ],
     },

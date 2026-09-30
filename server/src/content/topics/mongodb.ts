@@ -252,6 +252,14 @@ return ok(rows.map(toListItem));                     // no hydration on a read
 //   model.find({ page: { $in: ['/home', '/about'] } })                  // either page
 //   model.countDocuments({ kind: 'error' })            // the stats endpoint's count`,
         },
+        {
+          kind: 'demo',
+          id: 'mongo-queries:console-demo',
+          demoId: 'db:mongo-console',
+          title: 'The mongo console',
+          description:
+            'Live status of the optional connection (with the index list read from the server), an event form that proves schema validation and Mixed meta, the newest-first list with per-event AGE so the 60-second TTL is visible, stats, and a clear button. With Mongo off: the exact command that turns it on.',
+        },
       ],
     },
     {
@@ -262,7 +270,7 @@ return ok(rows.map(toListItem));                     // no hydration on a read
         {
           kind: 'text',
           id: 'mongo-indexes:mechanics',
-          body: `COMPOUND FIRST: the demo's workload is "newest events for a page", so the schema declares { page: 1, createdAt: -1 } — page ASCENDING then createdAt DESCENDING, exactly matching the query's equality-on-page + sort-on-createdAt shape (the same equality-prefix rule the SQL topic's EXPLAIN SEARCH taught: a compound index serves queries that pin its leading fields). WITHOUT it, every filtered list is a COLLECTION SCAN — read every document, keep the matches — fine at dozens of documents, the classic production killer at millions. Declaring indexes IN THE SCHEMA (EventSchema.index(...)) means the driver builds them idempotently on first use (model.init(); this repo's status endpoint awaits it before listing indexes) — the counterpart of a CREATE INDEX IF NOT EXISTS migration. THE TTL INDEX is the special case worth a section: { createdAt: 1 } with expireAfterSeconds: 60 tells the SERVER to delete every document in this collection whose createdAt is older than 60 seconds — a per-collection retention policy with no cron job, no worker, and no line of application code. THE TIMING IS LAZY, and honesty demands the emphasis: mongod runs a background deleter on roughly a 60-SECOND cadence per index, so a document becomes EXPIRED-ON-PAPER at t+60 and is GONE-ON-DISK somewhere in the next minute-ish — expect observed lifetimes between 60 and ~120 seconds (plus replica-set lag in a cluster; and TTL only fires on DATE fields). In the demo below: insert an event, watch its AGE climb, refresh — it vanishes. This is the exact concept the upcoming Redis topic's key TTL implements (per-KEY there, per-DOCUMENT here, server-enforced in both) — sessions, rate-limit windows, OTP codes, and telemetry retention are all the same pattern wearing four hats.`,
+          body: `COMPOUND FIRST: the demo's workload is "newest events for a page", so the schema declares { page: 1, createdAt: -1 } — page ASCENDING then createdAt DESCENDING, exactly matching the query's equality-on-page + sort-on-createdAt shape (the same equality-prefix rule the SQL topic's EXPLAIN SEARCH taught: a compound index serves queries that pin its leading fields). WITHOUT it, every filtered list is a COLLECTION SCAN — read every document, keep the matches — fine at dozens of documents, the classic production killer at millions. Declaring indexes IN THE SCHEMA (EventSchema.index(...)) means the driver builds them idempotently on first use (model.init(); this repo's status endpoint awaits it before listing indexes) — the counterpart of a CREATE INDEX IF NOT EXISTS migration. THE TTL INDEX is the special case worth a section: { createdAt: 1 } with expireAfterSeconds: 60 tells the SERVER to delete every document in this collection whose createdAt is older than 60 seconds — a per-collection retention policy with no cron job, no worker, and no line of application code. THE TIMING IS LAZY, and honesty demands the emphasis: mongod runs a background deleter on roughly a 60-SECOND cadence per index, so a document becomes EXPIRED-ON-PAPER at t+60 and is GONE-ON-DISK somewhere in the next minute-ish — expect observed lifetimes between 60 and ~120 seconds (plus replica-set lag in a cluster; and TTL only fires on DATE fields). In the demo above: insert an event, watch its AGE climb, refresh — it vanishes. This is the exact concept the upcoming Redis topic's key TTL implements (per-KEY there, per-DOCUMENT here, server-enforced in both) — sessions, rate-limit windows, OTP codes, and telemetry retention are all the same pattern wearing four hats.`,
         },
         {
           kind: 'code',
@@ -424,21 +432,13 @@ const REDIS_CLIENT_OPTIONS = {
     },
     {
       id: 'mongo-live',
-      title: 'See it live',
-      lead: 'One console, every concept: the lazy connection states, schema validation errors normalized into the canonical envelope, the fluent query results, and a TTL index deleting your documents while you watch. Needs the optional mongo service — and gracefully says so when it is missing.',
+      title: 'The mongo loop from a terminal',
+      lead: 'The terminal companion to the console (now in the Queries and the fluent API section above): the lazy connection states, schema validation errors normalized into the canonical envelope, the fluent query results, and a TTL index deleting your documents while you watch — all over curl. Needs the optional mongo service — and gracefully says so when it is missing.',
       blocks: [
         {
           kind: 'text',
           id: 'mongo-live:intro',
-          body: `THE SERVICE IS OPTIONAL, on purpose: without MONGO_URI (or with the container down), the status panel reports OFF with the exact command that turns it on — docker compose -f .docker/docker-compose.yml up -d mongo — and the data endpoints answer the canonical 503 envelope; nothing else in the guide so much as notices. WITH THE SERVICE UP, the console is a complete loop: STATUS shows configured → connected, the connection state, the host/db target (never credentials), and the LIVE index list straight from the server — page_1_createdAt_-1 and the TTL index createdAt_1 with expireAfterSeconds 60. INSERT an event (pick a kind, a page, a visitor, and any meta JSON you like — meta is Mixed, it will take whatever BSON can hold); a bad kind comes back as the 400 envelope with mongoose's field detail normalized under errors[] — the validation section's translation, live. THE LIST shows events newest-first with their AGE climbing in seconds — and roughly a minute after each createdAt, the TTL index makes them VANISH on the next refresh (the deleter is lazy: observed lifetimes run 60–120s). The STATS row carries count, oldest/newest, and the TTL facts. CLEAR resets the collection for the next experimenter. The curl block drives the same loop from a terminal.`,
-        },
-        {
-          kind: 'demo',
-          id: 'mongo-live:console-demo',
-          demoId: 'db:mongo-console',
-          title: 'The mongo console',
-          description:
-            'Live status of the optional connection (with the index list read from the server), an event form that proves schema validation and Mixed meta, the newest-first list with per-event AGE so the 60-second TTL is visible, stats, and a clear button. With Mongo off: the exact command that turns it on.',
+          body: `THE SERVICE IS OPTIONAL, on purpose: without MONGO_URI (or with the container down), the status endpoint reports OFF with the exact command that turns it on — docker compose -f .docker/docker-compose.yml up -d mongo — and the data endpoints answer the canonical 503 envelope; nothing else in the guide so much as notices. WITH THE SERVICE UP, the console (in the Queries section above) is a complete loop, and the curl block below drives its endpoints from a terminal: STATUS shows configured → connected, the connection state, the host/db target (never credentials), and the LIVE index list straight from the server — page_1_createdAt_-1 and the TTL index createdAt_1 with expireAfterSeconds 60. INSERT an event (any kind, page, visitor, and meta JSON you like — meta is Mixed, it will take whatever BSON can hold); a bad kind comes back as the 400 envelope with mongoose's field detail normalized under errors[] — the validation section's translation, live. THE LIST shows events newest-first with their AGE climbing in seconds — and roughly a minute after each createdAt, the TTL index makes them VANISH on the next refresh (the deleter is lazy: observed lifetimes run 60–120s). The STATS row carries count, oldest/newest, and the TTL facts. CLEAR resets the collection for the next experimenter.`,
         },
         {
           kind: 'code',

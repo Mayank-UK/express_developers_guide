@@ -3,8 +3,8 @@ import type { Topic } from '../types.js';
 /**
  * The Environments and Configuration topic — the guide's tour of ITS OWN
  * config pipeline. The three .env files, the resolution-order comment, and the
- * validated frozen AppConfig quoted below are the real files; the demo at the
- * end introspects the live config with secrets masked.
+ * validated frozen AppConfig quoted below are the real files; the config
+ * inspector demo introspects the live config with secrets masked.
  */
 export const topicEnvironments: Topic = {
   id: 'environments',
@@ -155,6 +155,14 @@ export function createAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig
   });
 }`,
         },
+        {
+          kind: 'demo',
+          id: 'env-validated:inspector-demo',
+          demoId: 'env:inspector',
+          title: 'The config inspector: this server\'s real config, masked environment and all',
+          description:
+            'Real introspection — the frozen AppConfig (nodeEnv, ports, logLevel, dbPath), process facts (node version, pid, cwd), the derived env-file name and whether it exists, and the masked environment view: config values shown, service URIs and secret-shaped names always hidden. Plus the static what-differs-per-environment strip from the repo\'s three real .env files.',
+        },
       ],
     },
     {
@@ -217,7 +225,7 @@ CMD ["node", "dist/server.js"]`,
         {
           kind: 'text',
           id: 'env-app-specific:table',
-          body: `THE COMPLETE LIST of behaviors that differ per environment in this codebase — short by design, and every row is a CONFIG READ, not a code branch: LOG LEVEL — the parser's default is 'debug' in development and 'info' everywhere else (overridable per environment file — staging and production both pin LOG_LEVEL=info explicitly); PRETTY LOGS — the logger routes through the pino-pretty transport ONLY when nodeEnv === 'development'; staging and production emit the same facts as JSON for machines (the exception-handling topic showed the two dialects side by side); SQLITE PATH — .env.development pins data/guide.db, staging's unset variable exercises the same default, and a vitest run (raw NODE_ENV=test, captured before the mapping) forces ':memory:' so no spec ever touches a real database file; OPTIONAL SERVICES — MONGO_URI and REDIS_URL are ''-means-off variables: development points both at localhost (ports the compose stack publishes for host-run dev), staging's file leaves both unset so both features boot off, production deliberately leaves mongo off with a comment saying why; PORTS — 4000 everywhere in this repo (the client's Vite proxy and both Dockerfiles agree), grpc 50051 by default, GRPC_PORT overridable; NODE_ENV ITSELF — development/staging/production from each file, test under vitest mapped to development. THE COMPOSE STORY IS THE LIVING PROOF of the resolution order: the server service declares BOTH \`env_file: [.env.development]\` AND an \`environment:\` block setting MONGO_URI=mongodb://mongo:27017/express_guide_dev and REDIS_URL=redis://redis:6379 — and compose's documented precedence is ENVIRONMENT BEATS ENV_FILE (same rule as dotenv's real-env-wins, enforced one layer up by the platform): inside the container network the services are reachable by SERVICE NAME, not localhost, so the file's 127.0.0.1 values are exactly what must lose. Two rules, one shape — the file carries defaults, the platform overrides, the process cannot tell who set what and does not care. THE DEMO at the end introspects this table LIVE: which file was loaded, what the frozen config actually says, and a masked view of the environment with every secret-shaped value hidden.`,
+          body: `THE COMPLETE LIST of behaviors that differ per environment in this codebase — short by design, and every row is a CONFIG READ, not a code branch: LOG LEVEL — the parser's default is 'debug' in development and 'info' everywhere else (overridable per environment file — staging and production both pin LOG_LEVEL=info explicitly); PRETTY LOGS — the logger routes through the pino-pretty transport ONLY when nodeEnv === 'development'; staging and production emit the same facts as JSON for machines (the exception-handling topic showed the two dialects side by side); SQLITE PATH — .env.development pins data/guide.db, staging's unset variable exercises the same default, and a vitest run (raw NODE_ENV=test, captured before the mapping) forces ':memory:' so no spec ever touches a real database file; OPTIONAL SERVICES — MONGO_URI and REDIS_URL are ''-means-off variables: development points both at localhost (ports the compose stack publishes for host-run dev), staging's file leaves both unset so both features boot off, production deliberately leaves mongo off with a comment saying why; PORTS — 4000 everywhere in this repo (the client's Vite proxy and both Dockerfiles agree), grpc 50051 by default, GRPC_PORT overridable; NODE_ENV ITSELF — development/staging/production from each file, test under vitest mapped to development. THE COMPOSE STORY IS THE LIVING PROOF of the resolution order: the server service declares BOTH \`env_file: [.env.development]\` AND an \`environment:\` block setting MONGO_URI=mongodb://mongo:27017/express_guide_dev and REDIS_URL=redis://redis:6379 — and compose's documented precedence is ENVIRONMENT BEATS ENV_FILE (same rule as dotenv's real-env-wins, enforced one layer up by the platform): inside the container network the services are reachable by SERVICE NAME, not localhost, so the file's 127.0.0.1 values are exactly what must lose. Two rules, one shape — the file carries defaults, the platform overrides, the process cannot tell who set what and does not care. THE DEMO above introspects this table LIVE: which file was loaded, what the frozen config actually says, and a masked view of the environment with every secret-shaped value hidden.`,
         },
         {
           kind: 'code',
@@ -340,22 +348,14 @@ curl -s -X PATCH localhost:4000/api/demo/scenario \\
     },
     {
       id: 'env-live',
-      title: 'See it live (the config inspector)',
+      title: 'The config inspector from a terminal',
       lead:
-        'The app introspects its own frozen AppConfig and serves it with every secret masked — the resolution order, the loaded file, and the environment as the process actually sees it.',
+        'The app introspects its own frozen AppConfig and serves it with every secret masked — the resolution order, the loaded file, and the environment as the process actually sees it, inspected from a terminal (the interactive inspector lives in the Validated config at boot section above).',
       blocks: [
         {
           kind: 'text',
           id: 'env-live:intro',
-          body: `THE ENDPOINT is GET /api/demo/env/inspect — the config pipeline with its jacket open, safely. It reports the FROZEN CONFIG the whole process shares (nodeEnv, ports, logLevel, dbPath — shown because a filesystem path is configuration, not a credential), the PROCESS FACTS (node version, pid, working directory — the things you reach for when a health check asks "what is actually running"), the DERIVED ENV FILE: \`.env.\${nodeEnv}\` computed exactly the way app_config computes its dotenv path (under vitest, nodeEnv reports 'development' and the derivation honestly says .env.development — the file that was actually loaded), plus whether that file EXISTS on disk, because dotenv never errors on a missing file and a staging box that did not ship one should be visible as such. THE MASKED ENVIRONMENT VIEW is the demo's contract: NODE_ENV, PORT, GRPC_PORT, LOG_LEVEL and SQLITE_PATH render their real values (they are configuration, and the lesson needs to see them); MONGO_URI and REDIS_URL render ONLY 'set (hidden)' or 'unset' — connection strings can carry credentials, so their values never leave the process through this endpoint; and anything else in the environment whose NAME confesses (token, secret, password, passkey, credential) is counted into hiddenSecretNames with the value never rendered. Two masking rules run in order — the NAME rule (a confessing name is always hidden) and the VALUE rule (a URL with embedded credentials is hidden even under an innocent name) — both quoted verbatim in section 6. THE CONSOLE below adds the static strip the endpoint cannot know: what DIFFERS per environment in this repo's three real files (the section 5 table as prose — dev's debug logs and localhost services, staging's near-empty file exercising defaults with features off, production's deliberately-absent mongo). Run the endpoint under different NODE_ENVs (\`NODE_ENV=staging npm run dev\`) and watch the config row change while the code, manifestly, does not.`,
-        },
-        {
-          kind: 'demo',
-          id: 'env-live:inspector-demo',
-          demoId: 'env:inspector',
-          title: 'The config inspector: this server\'s real config, masked environment and all',
-          description:
-            'Real introspection — the frozen AppConfig (nodeEnv, ports, logLevel, dbPath), process facts (node version, pid, cwd), the derived env-file name and whether it exists, and the masked environment view: config values shown, service URIs and secret-shaped names always hidden. Plus the static what-differs-per-environment strip from the repo\'s three real .env files.',
+          body: `THE ENDPOINT is GET /api/demo/env/inspect — the config pipeline with its jacket open, safely. It reports the FROZEN CONFIG the whole process shares (nodeEnv, ports, logLevel, dbPath — shown because a filesystem path is configuration, not a credential), the PROCESS FACTS (node version, pid, working directory — the things you reach for when a health check asks "what is actually running"), the DERIVED ENV FILE: \`.env.\${nodeEnv}\` computed exactly the way app_config computes its dotenv path (under vitest, nodeEnv reports 'development' and the derivation honestly says .env.development — the file that was actually loaded), plus whether that file EXISTS on disk, because dotenv never errors on a missing file and a staging box that did not ship one should be visible as such. THE MASKED ENVIRONMENT VIEW is the demo's contract: NODE_ENV, PORT, GRPC_PORT, LOG_LEVEL and SQLITE_PATH render their real values (they are configuration, and the lesson needs to see them); MONGO_URI and REDIS_URL render ONLY 'set (hidden)' or 'unset' — connection strings can carry credentials, so their values never leave the process through this endpoint; and anything else in the environment whose NAME confesses (token, secret, password, passkey, credential) is counted into hiddenSecretNames with the value never rendered. Two masking rules run in order — the NAME rule (a confessing name is always hidden) and the VALUE rule (a URL with embedded credentials is hidden even under an innocent name) — both quoted verbatim in section 6. THE CONSOLE (in the Validated config at boot section above) adds the static strip the endpoint cannot know: what DIFFERS per environment in this repo's three real files (the section 5 table as prose — dev's debug logs and localhost services, staging's near-empty file exercising defaults with features off, production's deliberately-absent mongo). Run the endpoint under different NODE_ENVs (\`NODE_ENV=staging npm run dev\`) and watch the config row change while the code, manifestly, does not.`,
         },
         {
           kind: 'code',

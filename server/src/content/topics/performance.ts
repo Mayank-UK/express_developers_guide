@@ -146,6 +146,14 @@ perfDemoRouter.get('/demo/perf/benchmark', benchmarkController);`,
           id: 'perf-bench:reading-the-numbers',
           body: `HOW TO READ THE DEMO. Fetch the payload with compression and you see: \`Content-Encoding: gzip\` (or \`br\`, per your browser's negotiation), NO \`Content-Length\` (the middleware streams — the size is not known until deflate finishes, so the transfer is chunked), and the body arrives in a fraction of the raw bytes. Fetch with \`?noCompress=1\` and you get identity: a \`Content-Length\`, full-size transfer, zero extra CPU. The RUN BENCHMARK button is the honest ledger: the server builds the SAME deterministic payload \`runs\` times and reports medians — \`msRaw\` (JSON.stringify alone) vs \`msCompressed\` (stringify + gzipSync), plus \`bytesRaw\` vs \`bytesCompressed\` and the ratio. Watch what the numbers actually say: the byte savings on repetitive telemetry is enormous (often 10–30× — repeated structured text is deflate's favorite food), while the CPU cost per response is fractions of a millisecond at these sizes. That asymmetry — huge wire savings, tiny CPU cost — is WHY compression is a near-default for text APIs, and the same ledger run against a 1KB payload or a pre-compressed image would show the opposite, which is why it is a measurement and not a law.`,
         },
+        {
+          kind: 'demo',
+          id: 'perf-bench:demo',
+          demoId: 'perf:bench',
+          title: 'The compression benchmark pair',
+          description:
+            'Fetch the same deterministic telemetry payload compressed and raw (the negotiated encoding vs identity, side by side), then run the server-side benchmark for the median CPU cost and the byte ratio of both variants.',
+        },
       ],
     },
     {
@@ -351,14 +359,14 @@ export async function buildPostsReport(): Promise<PostsReport> {
     },
     {
       id: 'perf-see-it-live',
-      title: 'See it live',
+      title: 'The benchmark pair from a terminal',
       lead:
         'The benchmark pair: fetch the same deterministic payload compressed and raw, then run the server-side benchmark and read both ledgers.',
       blocks: [
         {
           kind: 'text',
           id: 'perf-see-it-live:what-you-see',
-          body: `THE DEMO pairs the two halves of this topic: a WIRE experiment and an HONEST BENCHMARK. Fetch the payload (small ≈ 2KB, medium ≈ 50KB, large ≈ 500KB of deterministic, deliberately-repetitive telemetry) compressed and you get the negotiated encoding (br or gzip, per your browser), no Content-Length, and a body a fraction of the raw size; fetch it with the no-compress switch and you get identity with an exact Content-Length — same bytes both times, by construction. RUN BENCHMARK and the server measures BOTH variants in-process — medians of serialization alone vs serialization + gzip — and reports the byte ratio beside the CPU cost, so the trade this whole topic has been describing is a table you generated. Or drive it from a terminal and watch the headers change shape:`,
+          body: `THE DEMO (now living in the benchmark-pair section above) pairs the two halves of this topic: a WIRE experiment and an HONEST BENCHMARK. Fetch the payload (small ≈ 2KB, medium ≈ 50KB, large ≈ 500KB of deterministic, deliberately-repetitive telemetry) compressed and you get the negotiated encoding (br or gzip, per your browser), no Content-Length, and a body a fraction of the raw size; fetch it with the no-compress switch and you get identity with an exact Content-Length — same bytes both times, by construction. RUN BENCHMARK and the server measures BOTH variants in-process — medians of serialization alone vs serialization + gzip — and reports the byte ratio beside the CPU cost, so the trade this whole topic has been describing is a table you generated. Or drive it from a terminal and watch the headers change shape:`,
         },
         {
           kind: 'code',
@@ -377,14 +385,6 @@ curl -s 'localhost:4000/api/demo/perf/benchmark?size=medium&runs=10' | python3 -
 
 # the smoke detector beside it — a real event-loop delay histogram:
 curl -s localhost:4000/api/demo/obs/metrics | python3 -m json.tool | head -30`,
-        },
-        {
-          kind: 'demo',
-          id: 'perf-see-it-live:demo',
-          demoId: 'perf:bench',
-          title: 'The compression benchmark pair',
-          description:
-            'Fetch the same deterministic telemetry payload compressed and raw (the negotiated encoding vs identity, side by side), then run the server-side benchmark for the median CPU cost and the byte ratio of both variants.',
         },
       ],
     },

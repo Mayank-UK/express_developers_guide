@@ -86,6 +86,14 @@ app.use(
           id: 'security-headers:x-powered-by',
           body: `THE HEADER THAT ISN'T THERE: x-powered-by. Express advertises its presence there by default, and while framework-version disclosure is a WEAKNESS rather than a vulnerability (an attacker who knows your framework can skip three other probes — security through obscurity is not a defense, but why hand out the map), this app removed it the direct way (app.disable('x-powered-by') in app.ts) — helmet also strips it, so the belt-and-suspenders pairing is deliberate: the app states its own policy about what it reveals, and a library confirms it. WHAT HEADERS ARE NOT: they are not access control, not encryption, not authentication. nosniff does not validate your uploads; CSP does not fix your SQL injection; HSTS does not encrypt anything by itself — it instructs the browser to demand TLS. Read the whole set as the browser-facing CONVENTANTS of a contract: "when MY pages run in YOUR browser, here are the restrictions I consent to". That framing also explains why headers are the cheapest defense per line of code in this topic: one mount, every response, no per-route work — the defaults-not-features habit, embodied.`,
         },
+        {
+          kind: 'demo',
+          id: 'security-headers:lab-demo',
+          demoId: 'security:lab',
+          title: 'The security lab: headers, a trippable rate limit, CORS verdicts, the SSRF guard',
+          description:
+            'Four panels over real middleware: the security headers this very response carries (with per-header explainers), eight sequential pings that watch 200s become 429 + Retry-After, CORS allowed/denied verdicts from the enforcing allowlist function, and the SSRF guard denying the cloud metadata IP by name while allowing allowlisted hosts.',
+        },
       ],
     },
     {
@@ -448,22 +456,14 @@ curl -s localhost:4000/api/demo/security/pii/erasure-log | jq '.entries[0]'`,
     },
     {
       id: 'security-live',
-      title: 'See it live (the security lab)',
+      title: 'The security lab from a terminal',
       lead:
-        'Four panels over real middleware: the headers helmet actually set on YOUR request, a rate limit you can trip in eight clicks, CORS verdicts from the enforcing decision function, and the SSRF guard denying the metadata IP.',
+        'The lab now lives in the headers section above. This closing section is the terminal companion: the same four surfaces — the headers helmet sets, the rate limit you can trip, CORS verdicts, the SSRF guard — driven by curl, including the preflight a browser would send.',
       blocks: [
         {
           kind: 'text',
           id: 'security-live:intro',
-          body: `THE LAB'S FOUR PANELS. HEADERS: GET /api/demo/security/headers returns the response headers the CURRENT request actually received — helmet's full set (CSP, HSTS, nosniff, frame options, referrer policy, COOP/CORP…), the request-id middleware's x-request-id, Express's own — rendered as a table with a per-header explainer for the security ones; nothing is simulated, this is the wire. RATE LIMIT: a "send 8 requests" button fires eight sequential GETs at /api/demo/security/ping — the express-rate-limited route (5 per 60s per client ip) — and a row of eight status chips shows 200×5 then 429×3, with the Retry-After and RateLimit-* values pulled from the LAST response and the per-request remaining counts from each body; a second button does three clicks against the HANDMADE twin (3 per 30s) so both algorithms are trippable side by side. The limiters key by CLIENT IP — in the browser that is you, so once tripped, you wait out the window (that's the demo being honest; curl from another machine shows independent budgets). CORS: an origin field (prefilled with the allowed https://example.com and a one-click disallowed default) fires GET /cors-check, which answers with the SAME evaluateCorsOrigin decision the mounted middleware enforces — allowed/denied verdict, the exact Access-Control-Allow-Origin an allowed origin would earn, and the reminder that a denial means NO headers, not an error: the browser is the enforcer. SSRF GUARD: a URL field prefilled with http://169.254.169.254/latest/meta-data/ → the verdict panel shows DENIED with the named reason (link-local — the cloud metadata address); swap to an allowed host (http://httpbin.org/get) → ALLOWED; paste any disguise (0x7f000001, a @userinfo trick, [::ffff:127.0.0.1]) and the guard names the evasion class — and never fetches anything. The curl block below drives the same surface from a terminal, including the preflight the browser would send.`,
-        },
-        {
-          kind: 'demo',
-          id: 'security-live:lab-demo',
-          demoId: 'security:lab',
-          title: 'The security lab: headers, a trippable rate limit, CORS verdicts, the SSRF guard',
-          description:
-            'Four panels over real middleware: the security headers this very response carries (with per-header explainers), eight sequential pings that watch 200s become 429 + Retry-After, CORS allowed/denied verdicts from the enforcing allowlist function, and the SSRF guard denying the cloud metadata IP by name while allowing allowlisted hosts.',
+          body: `THE SAME SURFACE, NO BROWSER. HEADERS: curl -sD - against /headers dumps the exact set helmet put on that very response — CSP, HSTS, nosniff, frame options, referrer policy, COOP/CORP — the wire, not a mock; grep it, diff it against the pinned policy in app.ts, script an audit with it. THE TRIP: six rapid GETs on /ping watch 200s become the 429 envelope with Retry-After and the RateLimit-* headers (5 per 60s), and the handmade twin (3 per 30s) trips on its own budget — both key by CLIENT IP, so one machine is one client and the window must be waited out, the honest caveat the lab teaches too. CORS: send the preflight an allowed origin's browser would send (OPTIONS with Origin + Access-Control-Request-Method) and earn 204 plus the Access-Control-Allow-Origin line; send the same preflight from a disallowed origin and get NO ACAO line at all — the browser is the enforcer, the server just answers. Then /cors-check exposes the very evaluateCorsOrigin decision the mounted middleware enforces, verdict by verdict. THE SSRF GUARD: the metadata IP denied by name (link-local — the classic target), the disguise spellings — 0x7f000001, the @userinfo trick — each landing in a named evasion class, the allowlisted host allowed, and never a fetch. The lab above renders these four surfaces as panels with per-header explainers; this block is the same endpoints the way a script sees them — headers, verdicts, and envelopes, no console required.`,
         },
         {
           kind: 'code',

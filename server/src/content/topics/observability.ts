@@ -6,7 +6,8 @@ import type { Topic } from '../types.js';
  * you can read live), the request-logger middleware, the level discipline the
  * error middleware now follows, hand-rolled metrics, health checks, and the
  * process-level safety nets. Every code block is this app's real running
- * source; the demo at the end is a working log viewer over the live process.
+ * source; the demos are working viewers over the live process, each beside
+ * the section that teaches it.
  */
 export const topicObservability: Topic = {
   id: 'observability',
@@ -90,6 +91,14 @@ export const topicObservability: Topic = {
           kind: 'text',
           id: 'obs-structured-logging:read-the-logger',
           body: `READING THAT FILE. The level comes from validated config (LOG_LEVEL, per environment file — next sections). In development the first destination is pino-pretty — the same colored, timestamped console output the transport worker used to print, now an in-process stream, loaded with require() INSIDE the dev branch because it is a devDependency a production install must never resolve. In every environment the SECOND destination is the ring: the same JSON lines land in a 200-entry in-memory buffer that GET /api/demo/obs/logs serves — the log viewer in this topic's demo reads what the process ACTUALLY logged, not a parallel logger built for show. That is the multistream lesson: a logger can fan out to any number of destinations (console, file, ring, a TCP shipper) and the call sites never know or care.`,
+        },
+        {
+          kind: 'demo',
+          id: 'obs-structured-logging:demo',
+          demoId: 'obs:viewer',
+          title: 'The observability console',
+          description:
+            'Live log viewer over the process\u2019s own ring (level filtering + make-noise burst), the hand-rolled metrics strip, and the readiness check strip.',
         },
       ],
     },
@@ -604,14 +613,14 @@ curl -s -X POST localhost:4000/api/demo/obs/trace/reset`,
     },
     {
       id: 'obs-see-it-live',
-      title: 'See it live',
+      title: 'The same surface from a terminal',
       lead:
-        'The log viewer, the metrics strip, and the readiness probe — all reading THIS running process, not fixtures.',
+        'The console now lives in the structured-logging section above. This closing section is the terminal companion: the ring, the metrics, and the readiness probe read over curl — straight from the running process, never fixtures.',
       blocks: [
         {
           kind: 'text',
           id: 'obs-see-it-live:what-you-see',
-          body: `THE DEMO panels: (1) the LOG VIEWER polls the ring (GET /api/demo/obs/logs) — level chips are colored by the level discipline, minLevel buttons refetch with the filter, and MAKE NOISE fires a controlled burst (3×200 info, one 404 warn, one 400 warn, one 503 error — the 503 toggles failure injection around a real domain call and always restores it) so you can watch lines land with the right levels and correlate the access line with the error line by reqId. (2) the METRICS card shows uptime, event-loop delay (mean/p99), memory, and the request counters — including inFlight, which reads 1 while its own request is being served. (3) the HEALTH card renders the readiness check strip with ok/down/off chips and the liveness-vs-readiness distinction spelled out. Or drive it from a terminal:`,
+          body: `THE CURL VIEW of the same process. LOGS: /logs?minLevel=warn is the ring filtered exactly as the console filters it — the level discipline, queryable; /make-noise fires the controlled burst (3×200 info, one 404 warn, one 400 warn, one 503 error — the 503 toggles failure injection around a real domain call and always restores it), so the next /logs read shows lines landing at the levels the discipline promises, the access line and the error line correlated by reqId. METRICS: /metrics answers uptime, event-loop delay (mean/p99), memory, and the request counters — including inFlight, which reads 1 while its own request is being served. HEALTH: /health answers the readiness strip — sqlite probed for real, mongo/redis ok/down/off, grpc honest about whether this process started one — with liveness living at /api/health, dependency-free. Nothing here is fixture data: every command reads the process you are talking to. The console above renders the same endpoints with level chips and strips; this block is the guide's own tail -f.`,
         },
         {
           kind: 'code',
@@ -622,14 +631,6 @@ curl -s -X POST localhost:4000/api/demo/obs/trace/reset`,
 curl -s -X POST localhost:4000/api/demo/obs/make-noise
 curl -s localhost:4000/api/demo/obs/metrics | head -c 400
 curl -s localhost:4000/api/demo/obs/health`,
-        },
-        {
-          kind: 'demo',
-          id: 'obs-see-it-live:demo',
-          demoId: 'obs:viewer',
-          title: 'The observability console',
-          description:
-            'Live log viewer over the process\u2019s own ring (level filtering + make-noise burst), the hand-rolled metrics strip, and the readiness check strip.',
         },
       ],
     },

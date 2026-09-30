@@ -100,7 +100,7 @@ export const topicDependencyManagement: Topic = {
           kind: 'code',
           id: 'deps-semver:real-resolutions',
           language: 'text',
-          caption: 'The manifest\'s own ranges vs what the lockfile actually pinned — served live by the demo below',
+          caption: 'The manifest\'s own ranges vs what the lockfile actually pinned — served live by the manifest demo in the next section',
           code: `package.json (wanted)        lockfile (resolved)     what happened
 ───────────────────────────  ──────────────────────  ─────────────────────────────────
 express        ^5.1.0    →   5.2.1                  a fresh resolve admitted a newer
@@ -156,6 +156,14 @@ vitest         4.1.10    →   4.1.10                 EXACT pin: the test runner
 //   "lockfileVersion": 3   — v3 = the "packages" map keyed by physical path
 //                           (v1/v2 kept a legacy "dependencies" tree too;
 //                            npm 7+ writes 2 or 3, npm 9+ writes 3 only)`,
+        },
+        {
+          kind: 'demo',
+          id: 'deps-lockfile:manifest-demo',
+          demoId: 'deps:manifest',
+          title: 'The manifest inspector: this server\'s real dependency tree, wanted vs resolved',
+          description:
+            'Real files read at runtime — every runtime dependency with its package.json range beside the lockfile pin, the devDependency count, and the lockfile stats (lockfileVersion, the resolved-entry package count, the npm@12 generator note from the decision log). The transitive gap between the direct count and the lockfile count is the topic\'s argument rendered as a number.',
         },
       ],
     },
@@ -311,22 +319,14 @@ install what only survives contact with millions of users.`,
     },
     {
       id: 'deps-live',
-      title: 'See it live (the manifest inspector)',
+      title: 'The manifest inspector from a terminal',
       lead:
         'The app reads its own package.json and package-lock.json at runtime and serves them as data — wanted ranges beside resolved pins, and the transitive count that is the whole argument.',
       blocks: [
         {
           kind: 'text',
           id: 'deps-live:intro',
-          body: `THE ENDPOINT is GET /api/demo/deps/manifest — the server opening its own jacket. It reads THIS package's package.json and package-lock.json from disk at runtime (resolved relative to the module, so the same code works under tsx in src/ and from the compiled dist/ tree), and reports: the manifest's name/version; EVERY runtime dependency with its WANTED range (the string in package.json) and its RESOLVED version (the pin in the lockfile) side by side — find express and see \`^5.1.0\` admitting 5.2.1, the caret's real meaning as a live fact rather than a table; the devDependency count; and the LOCKFILE block — lockfileVersion, the package-count heuristic, and the generator note pointing at the decision log's npm@12 story. THE PACKAGE COUNT is counted by an honestly-stated heuristic: the endpoint counts \`"resolved":\` fields in the lockfile text, because every materialized package entry in a v3 lockfile carries one (the root entry and link entries do not — which is exactly what makes it a heuristic rather than a ledger). The NUMBER is the lesson regardless of ±1: twenty direct dependencies, hundreds of installed packages. That gap is the transitive graph you ship, answer advisories for, and upgrade forever — section 1's argument, now a number you can watch grow the next time someone adds "just one package". THE CONSOLE below renders the manifest as a table (name, wanted, resolved) with the lockfile stats beside it and the npm@12 story as a callout; the curl block runs the identical inspection from a terminal. Try it after an \`npm install\` of something new and watch the count move.`,
-        },
-        {
-          kind: 'demo',
-          id: 'deps-live:manifest-demo',
-          demoId: 'deps:manifest',
-          title: 'The manifest inspector: this server\'s real dependency tree, wanted vs resolved',
-          description:
-            'Real files read at runtime — every runtime dependency with its package.json range beside the lockfile pin, the devDependency count, and the lockfile stats (lockfileVersion, the resolved-entry package count, the npm@12 generator note from the decision log). The transitive gap between the direct count and the lockfile count is the topic\'s argument rendered as a number.',
+          body: `THE ENDPOINT is GET /api/demo/deps/manifest — the server opening its own jacket. It reads THIS package's package.json and package-lock.json from disk at runtime (resolved relative to the module, so the same code works under tsx in src/ and from the compiled dist/ tree), and reports: the manifest's name/version; EVERY runtime dependency with its WANTED range (the string in package.json) and its RESOLVED version (the pin in the lockfile) side by side — find express and see \`^5.1.0\` admitting 5.2.1, the caret's real meaning as a live fact rather than a table; the devDependency count; and the LOCKFILE block — lockfileVersion, the package-count heuristic, and the generator note pointing at the decision log's npm@12 story. THE PACKAGE COUNT is counted by an honestly-stated heuristic: the endpoint counts \`"resolved":\` fields in the lockfile text, because every materialized package entry in a v3 lockfile carries one (the root entry and link entries do not — which is exactly what makes it a heuristic rather than a ledger). The NUMBER is the lesson regardless of ±1: twenty direct dependencies, hundreds of installed packages. That gap is the transitive graph you ship, answer advisories for, and upgrade forever — section 1's argument, now a number you can watch grow the next time someone adds "just one package". THE CONSOLE — the inspector panel in the lockfile section above — renders the manifest as a table (name, wanted, resolved) with the lockfile stats beside it and the npm@12 story as a callout; the curl block below runs the identical inspection from a terminal. Try it after an \`npm install\` of something new and watch the count move.`,
         },
         {
           kind: 'code',
