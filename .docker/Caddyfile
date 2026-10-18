@@ -1,0 +1,6 @@
+# TLS front door: Caddy terminates HTTPS for the DuckDNS hostname with
+# automatic Let's Encrypt certificates and proxies to the nginx client
+# container inside the compose network.
+expressdevelopersguide.duckdns.org {
+    reverse_proxy client:80
+}

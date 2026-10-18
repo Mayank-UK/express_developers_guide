@@ -13,8 +13,8 @@ services:
     image: express_guide_server_prod
     container_name: express_developers_guide_server_prod
     restart: unless-stopped
-    # No published ports — the API stays internal; nginx's /api proxy on
-    # :8080 is the only front door. Debug hatch: - "127.0.0.1:4000:4000"
+    # No published ports — the API stays internal; nginx's /api proxy is the
+    # only caller. Debug hatch: - "127.0.0.1:4000:4000"
     env_file:
       - ./../server/.env.production
     environment:
@@ -57,17 +57,18 @@ services:
     image: express_guide_client_prod
     container_name: express_developers_guide_client_prod
     restart: unless-stopped
-    ports:
-      - 8080:80
+    # No published ports — Caddy is the front door now (TLS on :443); nginx
+    # is the internal app server behind it. Debug hatch (loopback, non-TLS):
+    # - "127.0.0.1:8080:80"
     networks:
       - frontend
     depends_on:
-      # Long form: nginx is the only front door, so it must not start until
-      # the API behind it actually answers its healthcheck.
+      # Long form: the app tier waits for its API — and Caddy chains the
+      # same gate one hop higher.
       server:
         condition: service_healthy
     healthcheck:
-      # Prove the front door itself answers, independent of the API gate.
+      # Prove the app tier answers, independent of the API gate.
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/"]
       interval: 30s
       timeout: 5s
@@ -108,6 +109,33 @@ services:
     networks:
       - backend
 
+  # TLS front door: terminates HTTPS for the DuckDNS hostname (automatic
+  # Let's Encrypt, HTTP/3) and proxies to the client container inside the
+  # compose network — the .docker/Caddyfile next to this file drives it.
+  caddy:
+    image: caddy:2-alpine
+    container_name: express_developers_guide_caddy_prod
+    restart: unless-stopped
+    ports:
+      # Caddy is the ONLY publicly published service now: 80 serves the
+      # ACME HTTP-01 challenge + redirect, 443 is HTTPS (tcp + udp = HTTP/3).
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates persist across container recreation — without /data
+      # every recreate re-provisions and burns Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - frontend
+    depends_on:
+      # Health-gated like every prod edge; the plain short form would race
+      # a still-starting nginx.
+      client:
+        condition: service_healthy
+
 networks:
   frontend:
   backend:
@@ -116,3 +144,5 @@ volumes:
   redis_data:
   server_data:
   mongo_data:
+  caddy_data:
+  caddy_config:
