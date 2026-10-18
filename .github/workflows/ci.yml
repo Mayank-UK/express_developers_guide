@@ -46,3 +46,16 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+
+  # Secret scanning, parallel to the package jobs: the guard that a real
+  # credential can never silently enter Git. This repo whitelists three
+  # placeholder-only .env teaching files (see .gitignore), which gitleaks'
+  # entropy rules won't flag — the gate is green by honesty, not exemption.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history — a leak in an old commit is still a leak.
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v6

@@ -1,3 +1,10 @@
+# Explicit compose project name: without it, compose derives "docker" from
+# this file's .docker/ parent dir, which shows as a bare "docker" group in
+# Docker Desktop. Distinct from the dev stack's name so both stacks can run
+# at once without sharing networks/volumes (mirrors the *_prod container
+# naming scheme).
+name: express_developers_guide_prod
+
 services:
   server:
     build:
@@ -6,13 +13,42 @@ services:
     image: express_guide_server_prod
     container_name: express_developers_guide_server_prod
     restart: unless-stopped
-    ports:
-      - 4000:4000
+    # No published ports — the API stays internal; nginx's /api proxy on
+    # :8080 is the only front door. Debug hatch: - "127.0.0.1:4000:4000"
     env_file:
       - ./../server/.env.production
+    environment:
+      # Inside compose the optional services are reachable by service name,
+      # not localhost — and environment: beats env_file:, so these win over
+      # the .env.production values (MONGO_URI is unset there on purpose;
+      # prod ships the full demo set, both services wired).
+      - REDIS_URL=redis://redis:6379
+      - MONGO_URI=mongodb://mongo:27017/express_guide_prod
+    volumes:
+      # SQLITE_PATH=data/guide.db is relative to the image WORKDIR /app, so
+      # /app/data is where the sqlite file lives; the named volume keeps the
+      # database across container recreation.
+      - server_data:/app/data
+    healthcheck:
+      # 127.0.0.1, not localhost: busybox wget resolves localhost to ::1
+      # first and the app binds IPv4 only.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:4000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - frontend
       - backend
+    depends_on:
+      # Prod SHIPS the optional services, so the server waits for them: the
+      # mongo client never reopens after a failed connect, and losing the
+      # boot race would mark a demo off for the process lifetime. Dev stays
+      # dependency-free — there the services are optional by design.
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
 
   client:
     build:
@@ -26,7 +62,17 @@ services:
     networks:
       - frontend
     depends_on:
-      - server
+      # Long form: nginx is the only front door, so it must not start until
+      # the API behind it actually answers its healthcheck.
+      server:
+        condition: service_healthy
+    healthcheck:
+      # Prove the front door itself answers, independent of the API gate.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   redis:
     image: redis:7-alpine
@@ -34,6 +80,31 @@ services:
     restart: unless-stopped
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - backend
+
+  # Full demo parity: prod ships mongo too, so every demo is live. Like
+  # redis, deliberately NO published ports — prod keeps the datastores
+  # private to the backend network (dev publishes 6379/27017 for host-run
+  # tooling; prod has no host-run tooling).
+  mongo:
+    image: mongo:7
+    container_name: express_developers_guide_mongo_prod
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - backend
 
@@ -43,3 +114,5 @@ networks:
 
 volumes:
   redis_data:
+  server_data:
+  mongo_data:

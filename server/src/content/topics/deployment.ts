@@ -62,7 +62,7 @@ export const topicDeployment: Topic = {
         {
           kind: 'text',
           id: 'deploy-docker:server-dockerfile',
-          body: `THE SERVER IMAGE, STAGE BY STAGE — this is the repo's real .docker/server/Dockerfile.prod, quoted whole below. The BUILD stage carries the toolchain and dev dependencies, compiles TypeScript, and dies there. The PROD-DEPS stage is the one most tutorials skip: it exists purely to run \`npm ci --omit=dev\` WITH build tooling present, producing a production node_modules whose install (with its node-gyp step) succeeds — while no compilers reach the runtime image. The RUNTIME stage is plain node:22-alpine plus two COPY --from lines — node_modules from prod-deps, dist from build — so the shipped image contains NO python, NO make, NO g++. Why the toolchain is needed AT ALL is the lesson this repo earned the hard way (next block); why it must NOT ship in the final image is defense-in-depth: compilers in a production image are attack surface for anyone who achieves code execution. Note also what the runtime stage does NOT have: no .env files (context-excluded), no src/ (the TypeScript never ships — source maps and error trackers are the debugging topic's answer to that), no data/ volume (sqlite lands in the container filesystem; the compose section is honest about that trade).`,
+          body: `THE SERVER IMAGE, STAGE BY STAGE — this is the repo's real .docker/server/Dockerfile.prod, quoted whole below. The BUILD stage carries the toolchain and dev dependencies, compiles TypeScript, and dies there. The PROD-DEPS stage is the one most tutorials skip: it exists purely to run \`npm ci --omit=dev\` WITH build tooling present, producing a production node_modules whose install (with its node-gyp step) succeeds — while no compilers reach the runtime image. The RUNTIME stage is plain node:22-alpine plus two COPY --from lines — node_modules from prod-deps, dist from build — so the shipped image contains NO python, NO make, NO g++. Why the toolchain is needed AT ALL is the lesson this repo earned the hard way (next block); why it must NOT ship in the final image is defense-in-depth: compilers in a production image are attack surface for anyone who achieves code execution. Note also what the runtime stage does NOT have: no .env files (context-excluded), no src/ (the TypeScript never ships — source maps and error trackers are the debugging topic's answer to that), no data/ volume (state is the orchestrator's to declare — the compose section's server_data mount at /app/data is where sqlite lands).`,
         },
         {
           kind: 'code',
@@ -164,7 +164,7 @@ CMD ["nginx", "-g", "daemon off;"]`,
         {
           kind: 'text',
           id: 'deploy-compose:what-compose-declares',
-          body: `A COMPOSE FILE IS A DECLARATION, not a script: "these services, these images, these networks, these volumes, these policies" — and \`docker compose up\` reconciles reality to it. That makes it the smallest real ORCHESTRATOR: far below Kubernetes, but it already owns the three concerns every orchestrator has — TOPOLOGY (the frontend/backend network split: nginx and the server sit on frontend; server, redis, and mongo sit on backend; the proxy can reach the app but NOT the databases directly), LIFECYCLE (restart policies, depends_on ordering), and STATE (named volumes that outlive containers — redis_data survives \`down\`). Service names ARE DNS: the nginx conf says \`proxy_pass http://server:4000\` and compose's embedded DNS resolves \`server\` to the container's address on the frontend network — no IPs anywhere. THE DEV/PROD PAIR in this repo teaches by contrast, quoted side by side below: dev bind-mounts LIVE SOURCE over the image (edit on the host, the container sees it) and shields the image-built node_modules behind an anonymous volume (otherwise the mount would shadow the compiled natives with the host's darwin ones — the native-module lesson again, from the other direction); prod mounts NOTHING — the image is the artifact, the source of truth — and reads its environment from .env.production through env_file. Both files give every service \`restart: unless-stopped\`, which is the process-manager section's Docker entry. TWO HONEST FACTS about the prod file: its redis publishes NO ports (dev publishes 6379/27017 so a HOST-run server can use them; prod keeps the databases private to the backend network), and the PROD file has NO healthchecks — dev's redis and mongo carry them (redis-cli / mongosh pings). \`depends_on\` without a \`condition: service_healthy\` waits for container START, not readiness; it is exactly enough here because the server treats every optional service as "down until proven up", but the zero-downtime section shows what a real readiness gate looks like.`,
+          body: `A COMPOSE FILE IS A DECLARATION, not a script: "these services, these images, these networks, these volumes, these policies" — and \`docker compose up\` reconciles reality to it. That makes it the smallest real ORCHESTRATOR: far below Kubernetes, but it already owns the three concerns every orchestrator has — TOPOLOGY (the frontend/backend network split: nginx and the server sit on frontend; server, redis, and mongo sit on backend; the proxy can reach the app but NOT the databases directly), LIFECYCLE (restart policies, depends_on ordering), and STATE (named volumes that outlive containers — redis_data survives \`down\`). Service names ARE DNS: the nginx conf says \`proxy_pass http://server:4000\` and compose's embedded DNS resolves \`server\` to the container's address on the frontend network — no IPs anywhere. THE DEV/PROD PAIR in this repo teaches by contrast, quoted side by side below: dev bind-mounts LIVE SOURCE over the image (edit on the host, the container sees it) and shields the image-built node_modules behind an anonymous volume (otherwise the mount would shadow the compiled natives with the host's darwin ones — the native-module lesson again, from the other direction); prod mounts NO source — the image is the artifact, the source of truth — declares named volumes for state (server_data at /app/data, where the prod SQLITE_PATH's data/ directory lands, so the database survives container recreation), and reads its defaults from .env.production through env_file before OVERRIDING the optional-service URLs in its own environment: block (service-name addressing — the precedence chain the environments topic teaches; prod ships the FULL demo set, redis and mongo both wired). Both files give every service \`restart: unless-stopped\`, which is the process-manager section's Docker entry. TWO HARDENING FACTS about the prod file: NO service publishes a datastore or API port — the server and BOTH datastores stay private (dev publishes 6379/27017 so a HOST-run server can use them; prod keeps everything behind nginx's /api proxy, the sole front door) — and the PROD file carries HEALTHCHECKS on every service — busybox wget probes (the API's /api/health, nginx's /), a redis-cli ping, a mongosh ping — which is what lets it use the LONG \`depends_on\` form everywhere: nginx does not start until the API answers, and the SERVER itself waits on redis and mongo \`condition: service_healthy\` because the mongo client never reopens a failed first connect — the boot race is won by declaration, not luck. Dev's \`depends_on\` stays the short form — it waits for container START, not readiness, which is exactly enough there because the server treats every optional service as "down until proven up"; the zero-downtime section shows what a full readiness gate looks like.`,
         },
         {
           kind: 'code',
@@ -201,7 +201,7 @@ CMD ["nginx", "-g", "daemon off;"]`,
           id: 'deploy-compose:side-by-side-prod',
           language: 'yaml',
           caption:
-            'PROD (.docker/docker-compose-prod.yml): the image is the artifact, env_file only',
+            'PROD (.docker/docker-compose-prod.yml): the image is the artifact — internal API, healthchecks everywhere, wired optional services, named volumes for state',
           source: '.docker/docker-compose-prod.yml',
           code: `  server:
     build:
@@ -209,13 +209,57 @@ CMD ["nginx", "-g", "daemon off;"]`,
       dockerfile: ./.docker/server/Dockerfile.prod
     image: express_guide_server_prod
     restart: unless-stopped
-    ports:
-      - 4000:4000
+    # No published ports — the API stays internal; nginx's /api proxy on
+    # :8080 is the only front door. Debug hatch: - "127.0.0.1:4000:4000"
     env_file:
       - ./../server/.env.production
+    environment:
+      # Inside compose the optional services are reachable by service name,
+      # not localhost — and environment: beats env_file:, so these win over
+      # the .env.production values (MONGO_URI is unset there on purpose;
+      # prod ships the full demo set, both services wired).
+      - REDIS_URL=redis://redis:6379
+      - MONGO_URI=mongodb://mongo:27017/express_guide_prod
+    volumes:
+      # SQLITE_PATH=data/guide.db is relative to the image WORKDIR /app, so
+      # /app/data is where the sqlite file lives; the named volume keeps the
+      # database across container recreation.
+      - server_data:/app/data
+    healthcheck:
+      # 127.0.0.1, not localhost: busybox wget resolves localhost to ::1
+      # first and the app binds IPv4 only.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:4000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - frontend
-      - backend`,
+      - backend
+    depends_on:
+      # Prod SHIPS the optional services, so the server waits for them: the
+      # mongo client never reopens after a failed connect, and losing the
+      # boot race would mark a demo off for the process lifetime. Dev stays
+      # dependency-free — there the services are optional by design.
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+
+  # … client: nginx on 8080:80, gated on the server's healthcheck …
+  client:
+    # …
+    depends_on:
+      server:
+        condition: service_healthy
+
+  # … redis + mongo: backend-only datastores, no published ports, ping
+  # healthchecks, named volumes (redis_data / mongo_data) …
+
+volumes:
+  redis_data:
+  server_data:
+  mongo_data:`,
         },
         {
           kind: 'text',
@@ -421,7 +465,7 @@ server {
         {
           kind: 'text',
           id: 'deploy-process:graceful-shutdown',
-          body: `ZERO-DOWNTIME STARTS AT SHUTDOWN. The primitive is not clever infrastructure — it is the ability to STOP TAKING NEW CONNECTIONS while FINISHING IN-FLIGHT WORK, then exit. That is exactly what server.ts does on SIGTERM (quoted below, abridged to its spine): drain gRPC first, then the optional mongo and BOTH redis connections, close the chat hub (open websockets would otherwise hold server.close() hostage), and only then server.close() — with a 10-second force-exit net so a stuck connection cannot wedge the shutdown forever (the net is what TimeoutStopSec/kill_timeout above must out-wait). Every supervisor in the catalog sends SIGTERM first precisely because of code like this; SIGKILL is what arrives when the timeout expires anyway. THE DEPLOY CHOREOGRAPHY this enables: with ≥2 replicas behind the proxy, a rolling restart removes one replica from rotation, sends it SIGTERM, WAITS for its drain (in-flight requests land, responses flush), starts the replacement, waits for its READINESS gate — and here the health topic chain pays off: GET /api/health is the liveness signal, the observability topic's /api/demo/obs/health is the readiness-shaped one (sqlite probed for real, optional services reported honestly) — and only then moves to the next replica. One replica draining at a time means the capacity dip is 1/N, never N. Compose itself does a mini version of this on \`up -d\` after a rebuild: recreate the changed container (stop → SIGTERM → drain → remove → start new). It is coarse — the whole service blinks, no readiness gate — which is the honest line between compose and the orchestrators: same SIGNALS, finer control.`,
+          body: `ZERO-DOWNTIME STARTS AT SHUTDOWN. The primitive is not clever infrastructure — it is the ability to STOP TAKING NEW CONNECTIONS while FINISHING IN-FLIGHT WORK, then exit. That is exactly what server.ts does on SIGTERM (quoted below, abridged to its spine): drain gRPC first, then the optional mongo and BOTH redis connections, close the chat hub (open websockets would otherwise hold server.close() hostage), and only then server.close() — with a 10-second force-exit net so a stuck connection cannot wedge the shutdown forever (the net is what TimeoutStopSec/kill_timeout above must out-wait). Every supervisor in the catalog sends SIGTERM first precisely because of code like this; SIGKILL is what arrives when the timeout expires anyway. THE DEPLOY CHOREOGRAPHY this enables: with ≥2 replicas behind the proxy, a rolling restart removes one replica from rotation, sends it SIGTERM, WAITS for its drain (in-flight requests land, responses flush), starts the replacement, waits for its READINESS gate — and here the health topic chain pays off: GET /api/health is the liveness signal, the observability topic's /api/demo/obs/health is the readiness-shaped one (sqlite probed for real, optional services reported honestly) — and only then moves to the next replica. One replica draining at a time means the capacity dip is 1/N, never N. Compose itself does a mini version of this on \`up -d\` after a rebuild: recreate the changed container (stop → SIGTERM → drain → remove → start new). It is coarse — the whole service blinks, and the only readiness gate is the prod file's health-aware depends_on (the client waits for /api/health before starting) — which is the honest line between compose and the orchestrators: same SIGNALS, finer control.`,
         },
         {
           kind: 'code',
@@ -466,14 +510,14 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));`,
         {
           kind: 'text',
           id: 'deploy-cicd:pipeline',
-          body: `THE PIPELINE, STAGE BY STAGE — what the real .github/workflows/ci.yml runs on every push to main and every pull request. (0) SETUP — checkout, Node 22, and the npm cache keyed on each package's lockfile (the cache is what keeps \`npm ci\` under a minute instead of under five). (1) LINT — HONEST GAP: neither package has a linter installed (no eslint, no config; the workflow's own header says "nothing faked below"), so the lint stage does not exist yet and this topic will not pretend otherwise; the first line of the pipeline's future is \`npx eslint .\` after the dependency lands. (2) TEST — \`npm run test:coverage\` on the server and plain \`npm test\` on the client: the server's Vitest/Supertest suite runs under V8 coverage with ENFORCED THRESHOLDS from vitest.config.ts (a measured floor for lines/branches/functions/statements — slip under the percentages and the build goes red, so coverage gaps become visible instead of invisible), the client's jsdom suite runs plain, with zero service containers — the workflow's header states the trick this repo earns for free: vitest runs with NODE_ENV unset, which forces the test mapping to sqlite ':memory:', and the live mongo/redis worlds are skipIf-gated, so the default CI world is hermetic by construction. (3) BUILD — both \`npm run build\`s, because a pipeline that never runs the build ships the first broken build to Docker (the server's tsc and the client's tsc -b + vite build are both compile gates). (4) IMAGE + PUSH ON TAG — the GROWTH PATH, not yet shipped: build the images from the SAME Dockerfile.prod files the compose stack uses (one artifact definition, everywhere), run the build on every PR to prove it CAN build, but PUSH only on \`v*\` tags with the semver and latest — \`needs: [server, client]\` so no image whose tests failed can ever exist (an image in a registry is a DEPLOYABLE UNIT, and a deployable unit that skipped tests is a loaded gun). THE SEMVER DISCIPLINE for tags: vX.Y.Z where X breaks API, Y adds, Z fixes — and tags are IMMUTABLE (never move a pushed tag; deploy rolls FORWARD by tagging the fix).`,
+          body: `THE PIPELINE, STAGE BY STAGE — what the real .github/workflows/ci.yml runs on every push to main and every pull request. (0) SETUP — checkout, Node 22, and the npm cache keyed on each package's lockfile (the cache is what keeps \`npm ci\` under a minute instead of under five). (1) LINT — HONEST GAP: neither package has a linter installed (no eslint, no config; the workflow's own header says "nothing faked below"), so the lint stage does not exist yet and this topic will not pretend otherwise; the first line of the pipeline's future is \`npx eslint .\` after the dependency lands. (2) TEST — \`npm run test:coverage\` on the server and plain \`npm test\` on the client: the server's Vitest/Supertest suite runs under V8 coverage with ENFORCED THRESHOLDS from vitest.config.ts (a measured floor for lines/branches/functions/statements — slip under the percentages and the build goes red, so coverage gaps become visible instead of invisible), the client's jsdom suite runs plain, with zero service containers — the workflow's header states the trick this repo earns for free: vitest runs with NODE_ENV unset, which forces the test mapping to sqlite ':memory:', and the live mongo/redis worlds are skipIf-gated, so the default CI world is hermetic by construction. (3) BUILD — both \`npm run build\`s, because a pipeline that never runs the build ships the first broken build to Docker (the server's tsc and the client's tsc -b + vite build are both compile gates). (4) IMAGE + PUSH ON TAG — the GROWTH PATH, not yet shipped: build the images from the SAME Dockerfile.prod files the compose stack uses (one artifact definition, everywhere), run the build on every PR to prove it CAN build, but PUSH only on \`v*\` tags with the semver and latest — \`needs: [server, client]\` so no image whose tests failed can ever exist (an image in a registry is a DEPLOYABLE UNIT, and a deployable unit that skipped tests is a loaded gun). Alongside the package jobs a THIRD job, \`secrets\`, runs gitleaks over the FULL history on every push and PR — the guard that a REAL credential can never silently enter Git; this repo whitelists three placeholder-only .env teaching files, which gitleaks' entropy rules won't flag, so the gate is green by honesty, not exemption. THE SEMVER DISCIPLINE for tags: vX.Y.Z where X breaks API, Y adds, Z fixes — and tags are IMMUTABLE (never move a pushed tag; deploy rolls FORWARD by tagging the fix).`,
         },
         {
           kind: 'code',
           id: 'deploy-cicd:workflow-quote',
           language: 'yaml',
           caption:
-            'Verbatim — the real .github/workflows/ci.yml this repo runs on every push and pull request (both packages, tests AND build — the devcontainer\'s definition of done, on GitHub\'s runners)',
+            'Verbatim — the real .github/workflows/ci.yml this repo runs on every push and pull request (both packages, tests AND build, plus the gitleaks secrets gate — the devcontainer\'s definition of done, on GitHub\'s runners)',
           source: '.github/workflows/ci.yml',
           code: `name: CI
 
@@ -513,12 +557,25 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: npm ci
       - run: npm test
-      - run: npm run build`,
+      - run: npm run build
+
+  # Secret scanning, parallel to the package jobs: the guard that a real
+  # credential can never silently enter Git. This repo whitelists three
+  # placeholder-only .env teaching files (see .gitignore), which gitleaks'
+  # entropy rules won't flag — the gate is green by honesty, not exemption.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history — a leak in an old commit is still a leak.
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v6`,
         },
         {
           kind: 'text',
           id: 'deploy-cicd:deploy-hook',
-          body: `FROM PUSHED IMAGE TO RUNNING STACK — the D in CI/CD, honestly sized for a compose deployment. The deploy hook is whatever tells the host "pull and recreate": the smallest honest version is SSH into the host and run \`docker compose -f .docker/docker-compose-prod.yml pull && docker compose -f .docker/docker-compose-prod.yml up -d\` — pull swaps the image tag, up recreates ONLY the changed containers, and the SIGTERM drain from the last section carries in-flight requests across the blink. (The image: line in the prod compose names the built image locally; a registry deployment replaces build: with image: ghcr.io/…/server:vX.Y.Z — same file, different source of truth, and the tag pin in the file becomes the deploy's audit trail.) THE GROWTH PATH, one line each: pull-based agents (watchtower) trade control for zero SSH; purpose-built CD (a GitHub Actions deploy job with environment approvals) adds gates; and Kubernetes flips the model — the cluster PULLS toward declared state and you only change the tag in a manifest. WHAT CI MUST NEVER SEE: secret VALUES. The shipped workflow uses NO credentials at all (checkout and run steps only); every future secret (a registry token, a deploy key) enters as \${{ secrets.NAME }}, stored in the repo's encrypted settings, surfacing only as an environment variable at the exact step that needs it. The next section closes the loop on where those values live at RUNTIME.`,
+          body: `FROM PUSHED IMAGE TO RUNNING STACK — the D in CI/CD, honestly sized for a compose deployment. The deploy hook is whatever tells the host "pull and recreate": the smallest honest version is SSH into the host and run \`docker compose -f .docker/docker-compose-prod.yml pull && docker compose -f .docker/docker-compose-prod.yml up -d\` — pull swaps the image tag, up recreates ONLY the changed containers, and the SIGTERM drain from the last section carries in-flight requests across the blink. (The image: line in the prod compose names the built image locally; a registry deployment replaces build: with image: ghcr.io/…/server:vX.Y.Z — same file, different source of truth, and the tag pin in the file becomes the deploy's audit trail.) THE GROWTH PATH, one line each: pull-based agents (watchtower) trade control for zero SSH; purpose-built CD (a GitHub Actions deploy job with environment approvals) adds gates; and Kubernetes flips the model — the cluster PULLS toward declared state and you only change the tag in a manifest. WHAT CI MUST NEVER SEE: secret VALUES. The shipped workflow uses NO stored credentials at all (checkout, run steps, and the gitleaks scanner — which needs no token on a public repo); every future secret (a registry token, a deploy key) enters as \${{ secrets.NAME }}, stored in the repo's encrypted settings, surfacing only as an environment variable at the exact step that needs it. The next section closes the loop on where those values live at RUNTIME.`,
         },
       ],
     },
@@ -531,7 +588,7 @@ jobs:
         {
           kind: 'text',
           id: 'deploy-parity:layers',
-          body: `ONE IMAGE, N ENVIRONMENTS — the payoff of config-via-env: staging and production run the SAME artifacts, differing only in what the orchestrator injects. This repo's precedence chain, top wins: (1) compose \`environment:\` — the dev compose uses exactly this to REDIRECT service URLs (\`MONGO_URI=mongodb://mongo:27017/…\`) because inside the compose network the databases live at service names, not 127.0.0.1 as .env.development claims; (2) compose \`env_file:\` — the per-environment file (\`env_file: ./../server/.env.production\` in prod); (3) the IMAGE's ENV (\`ENV NODE_ENV=production\` — the one value that is genuinely the image's business); (4) dotenv — last resort, and ONLY in development, because a file inside the image would make environments distinguishable by their ARTIFACT, which is the whole anti-pattern (and the reason .dockerignore excludes \`.env*\`: an env file baked into a layer ships its values to every registry the image touches). The layers are also a debugging map: when prod behaves differently, walk the chain — environment: beats env_file:, the real environment beats dotenv, and a value you THOUGHT was set may be being overridden two layers up. SECRETS AT DEPLOY TIME follow the same shape with one more rule: the compose env_file on the HOST holds real values (git-ignored, chmod 600), CI holds its copies as GitHub secrets materialized into env vars only in the steps that need them, and the OBSERVABILITY rule from the environments topic still governs — the app's config inspector masks secret-shaped names to "set (hidden)", and no log line ever prints a value. ONE KNOWN GAP, stated rather than fixed: the repo's root .gitignore does not yet list \`.env*\` (noted in the security topic when the placeholder-only secrets were documented) — placeholder values today, but the gitignore hardening is deliberately OUT of this topic's scope and stays a declared follow-up until the repo is git-initialized with real credentials in play.`,
+          body: `ONE IMAGE, N ENVIRONMENTS — the payoff of config-via-env: staging and production run the SAME artifacts, differing only in what the orchestrator injects. This repo's precedence chain, top wins: (1) compose \`environment:\` — both compose files use exactly this to REDIRECT service URLs (\`MONGO_URI=mongodb://mongo:27017/…\`) because inside the compose network the databases live at service names, not 127.0.0.1 as the env files claim; (2) compose \`env_file:\` — the per-environment file (\`env_file: ./../server/.env.production\` in prod); (3) the IMAGE's ENV (\`ENV NODE_ENV=production\` — the one value that is genuinely the image's business); (4) dotenv — last resort, and ONLY in development, because a file inside the image would make environments distinguishable by their ARTIFACT, which is the whole anti-pattern (and the reason .dockerignore excludes \`.env*\`: an env file baked into a layer ships its values to every registry the image touches). The layers are also a debugging map: when prod behaves differently, walk the chain — environment: beats env_file:, the real environment beats dotenv, and a value you THOUGHT was set may be being overridden two layers up. SECRETS AT DEPLOY TIME follow the same shape with one more rule: the compose env_file on the HOST holds real values (git-ignored, chmod 600), CI holds its copies as GitHub secrets materialized into env vars only in the steps that need them, and the OBSERVABILITY rule from the environments topic still governs — the app's config inspector masks secret-shaped names to "set (hidden)", and no log line ever prints a value. ONE KNOWN GAP, stated rather than fixed: the repo's root .gitignore does not yet list \`.env*\` (noted in the security topic when the placeholder-only secrets were documented) — placeholder values today, but the gitignore hardening is deliberately OUT of this topic's scope and stays a declared follow-up until the repo is git-initialized with real credentials in play.`,
         },
         {
           kind: 'code',
@@ -556,13 +613,15 @@ NODE_ENV=production
 LOG_LEVEL=info
 SQLITE_PATH=data/guide.db
 
-# MONGO_URI is deliberately unset here — the MongoDB demo stays off until a
-# mongo service exists for this environment.`,
+# MONGO_URI stays unset in this FILE on purpose — the prod compose supplies
+# the service-name URI (mongodb://mongo:27017/express_guide_prod) via its
+# environment: block, which beats env_file. The file keeps the default
+# honest: no compose, no mongo.`,
         },
         {
           kind: 'text',
           id: 'deploy-parity:parity-and-data',
-          body: `PARITY, DEFINED AND TESTED. "Works in staging" is only a claim if staging differs from production in exactly the ways you can LIST: same image (the tag pins it), same compose topology (frontend/backend networks, same restart policies), different VALUES (staging's LOG_LEVEL can be debug; prod's is info — the environments topic's own files show that pair). The parity threat is always the UNLISTED difference — a version skew, a missing env var, a volume that exists in one and not the other — and the cure is that the environment IS data: diff two env files, inspect a running container's actual env (\`docker exec <container> env\`, or \`docker inspect\`), and the gap becomes visible instead of folkloric. ONE HONEST EPHEMERALITY in this repo's prod stack, because teaching files must not lie by omission: SQLITE_PATH resolves to data/guide.db INSIDE the container filesystem, and the prod compose mounts NO volume for it — \`docker compose down\` (and container recreation on every deploy) DESTROYS the database. That is the correct demonstration posture (the guide's data is seed data; the demo repos reseed), and it is also a deliberate lesson: STATEFULness must be DECLARED. The day this database matters, the fix is one declared volume — the redis_data volume in the same file is the working pattern sitting right there: a named volume that outlives recreation, exactly the lifecycle sqlite would need to adopt.`,
+          body: `PARITY, DEFINED AND TESTED. "Works in staging" is only a claim if staging differs from production in exactly the ways you can LIST: same image (the tag pins it), same compose topology (frontend/backend networks, same restart policies), different VALUES (staging's LOG_LEVEL can be debug; prod's is info — the environments topic's own files show that pair). The parity threat is always the UNLISTED difference — a version skew, a missing env var, a volume that exists in one and not the other — and the cure is that the environment IS data: diff two env files, inspect a running container's actual env (\`docker exec <container> env\`, or \`docker inspect\`), and the gap becomes visible instead of folkloric. ONE HONEST DATA LESSON, because teaching files must not lie by omission: SQLITE_PATH resolves to data/guide.db under the image WORKDIR /app, and the prod compose declares exactly ONE named volume for it — server_data mounted at /app/data — so the database now SURVIVES container recreation and \`up -d\` deploys; only an explicit \`down -v\` discards it. That was not always so: the stack ran for a while with sqlite loose in the container filesystem, where every \`down\` (and every deploy's recreation) DESTROYED the database — fine for the guide's seed data, wrong the day the data matters. STATEFULness must be DECLARED: the redis_data volume in the same file was the working pattern sitting right there — a named volume that outlives recreation — and sqlite has adopted exactly that lifecycle.`,
         },
       ],
     },
