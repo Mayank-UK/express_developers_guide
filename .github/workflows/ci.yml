@@ -16,8 +16,8 @@ jobs:
             run:
                 working-directory: server
         steps:
-            - uses: actions/checkout@v4
-            - uses: actions/setup-node@v4
+            - uses: actions/checkout@v6
+            - uses: actions/setup-node@v6
               with:
                   node-version: 22
                   cache: npm
@@ -32,8 +32,8 @@ jobs:
             run:
                 working-directory: client
         steps:
-            - uses: actions/checkout@v4
-            - uses: actions/setup-node@v4
+            - uses: actions/checkout@v6
+            - uses: actions/setup-node@v6
               with:
                   node-version: 22
                   cache: npm
@@ -45,10 +45,12 @@ jobs:
     secrets:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
               with:
                   fetch-depth: 0
-            - uses: gitleaks/gitleaks-action@v6
+            - uses: gitleaks/gitleaks-action@v3
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     build-push:
         name: Build and publish production images
@@ -71,7 +73,7 @@ jobs:
                       dockerfile: .docker/client/Dockerfile.prod
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Compute commit image tag
               id: image_tag
