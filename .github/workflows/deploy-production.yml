@@ -1,0 +1,293 @@
+# Production deployment:
+# - Successful CI on master deploys the exact commit CI built.
+# - Manual dispatch deploys a specified commit's sha-* GHCR images.
+# - Each release keeps its own Compose file, Caddyfile, and env file.
+# - Failed deployment rolls back to the last successful GHCR release, if any.
+# - If no previous successful release exists, report failure without fallback.
+
+name: Deploy production
+
+on:
+    workflow_run:
+        workflows: [CI]
+        types: [completed]
+        branches: [master]
+    workflow_dispatch:
+        inputs:
+            image_tag:
+                description: 'Commit image tag, e.g. sha-abcd1234 or abcd1234'
+                required: true
+                type: string
+
+permissions:
+    contents: read
+
+jobs:
+    deploy-production:
+        name: Deploy production
+        runs-on: ubuntu-latest
+
+        if: >-
+            (
+              github.event_name == 'workflow_dispatch' &&
+              github.ref == 'refs/heads/master'
+            ) ||
+            (
+              github.event_name == 'workflow_run' &&
+              github.event.workflow_run.conclusion == 'success' &&
+              github.event.workflow_run.event == 'push' &&
+              github.event.workflow_run.head_branch == 'master' &&
+              github.event.workflow_run.head_repository.full_name == github.repository
+            )
+
+        environment: production
+        concurrency:
+            group: deploy-production
+            cancel-in-progress: false
+        permissions:
+            contents: read
+
+        steps:
+            - name: Check out repository history
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: refs/heads/master
+                  fetch-depth: 0
+
+            - name: Resolve deployment commit and image tag
+              id: tag
+              shell: bash
+              env:
+                  INPUT_TAG: ${{ inputs.image_tag }}
+                  HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+              run: |
+                  set -euo pipefail
+
+                  if [ -n "$INPUT_TAG" ]; then
+                    case "$INPUT_TAG" in
+                      sha-*) short="${INPUT_TAG#sha-}" ;;
+                      *)     short="$INPUT_TAG" ;;
+                    esac
+
+                    if [[ ! "$short" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+                      echo "Invalid image tag. Supply sha- followed by a commit SHA, or a bare commit SHA." >&2
+                      exit 1
+                    fi
+
+                    sha="$(git rev-parse --verify "${short}^{commit}")"
+                  else
+                    sha="$HEAD_SHA"
+                    git cat-file -e "${sha}^{commit}"
+                  fi
+
+                  sha="$(printf '%s' "$sha" | tr '[:upper:]' '[:lower:]')"
+
+                  # Only deploy commits reachable from the production branch.
+                  if ! git merge-base --is-ancestor "$sha" origin/master; then
+                    echo "Refusing deployment: commit is not on the master history." >&2
+                    exit 1
+                  fi
+
+                  tag="sha-$(printf '%s' "$sha" | cut -c1-7)"
+
+                  echo "Deployment commit: $sha"
+                  echo "Image tag: $tag"
+                  echo "sha=$sha" >> "$GITHUB_OUTPUT"
+                  echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+            - name: Check out exact deployment commit
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: ${{ steps.tag.outputs.sha }}
+                  fetch-depth: 1
+
+            - name: Validate production configuration
+              env:
+                  IMAGE_TAG: sha-test
+              run: |
+                  set -euo pipefail
+                  test -f .docker/docker-compose-prod.yml
+                  test -f .docker/Caddyfile
+                  test -f server/.env.production
+                  docker compose -f .docker/docker-compose-prod.yml config -q
+
+            - name: Prepare release directory on VM
+              uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+              with:
+                  host: ${{ secrets.VM_HOST }}
+                  username: ${{ secrets.VM_USER }}
+                  key: ${{ secrets.VM_PRIVATE_KEY }}
+                  passphrase: ${{ secrets.VM_PRIVATE_KEY_PASSPHRASE }}
+                  fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
+                  command_timeout: 1m
+                  script: |
+                      set -eu
+                      mkdir -p "/home/ubuntu/express_developers_guide/releases/${{ steps.tag.outputs.sha }}"
+
+            - name: Transfer release configuration
+              uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+              with:
+                  host: ${{ secrets.VM_HOST }}
+                  username: ${{ secrets.VM_USER }}
+                  key: ${{ secrets.VM_PRIVATE_KEY }}
+                  passphrase: ${{ secrets.VM_PRIVATE_KEY_PASSPHRASE }}
+                  fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
+                  source: '.docker/docker-compose-prod.yml,.docker/Caddyfile,server/.env.production'
+                  target: '/home/ubuntu/express_developers_guide/releases/${{ steps.tag.outputs.sha }}'
+                  strip_components: 0
+
+            - name: Deploy and recover if necessary
+              uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+              env:
+                  DEPLOY_SHA: ${{ steps.tag.outputs.sha }}
+                  IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+                  GHCR_USER: ${{ secrets.GHCR_USER }}
+                  GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+              with:
+                  host: ${{ secrets.VM_HOST }}
+                  username: ${{ secrets.VM_USER }}
+                  key: ${{ secrets.VM_PRIVATE_KEY }}
+                  passphrase: ${{ secrets.VM_PRIVATE_KEY_PASSPHRASE }}
+                  fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
+                  envs: DEPLOY_SHA,IMAGE_TAG,GHCR_USER,GHCR_PULL_TOKEN
+                  command_timeout: 10m
+                  script: |
+                      set -eu
+
+                      ROOT="/home/ubuntu/express_developers_guide"
+                      RELEASE_DIR="$ROOT/releases/$DEPLOY_SHA"
+                      COMPOSE_FILE="$RELEASE_DIR/.docker/docker-compose-prod.yml"
+                      STATE_DIR="$ROOT/.deploy"
+                      STATE_FILE="$STATE_DIR/last-successful-sha"
+                      HEALTH_URL="https://expressdevelopersguide.duckdns.org/api/health"
+
+                      test -f "$COMPOSE_FILE"
+                      test -f "$RELEASE_DIR/.docker/Caddyfile"
+                      test -f "$RELEASE_DIR/server/.env.production"
+
+                      mkdir -p "$STATE_DIR"
+
+                      # Authenticate to GHCR without putting the token in command arguments.
+                      printf '%s' "$GHCR_PULL_TOKEN" |
+                        docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+                      # Read the last successful release, if one exists.
+                      PREVIOUS_SHA=""
+                      if [ -s "$STATE_FILE" ]; then
+                        PREVIOUS_SHA="$(cat "$STATE_FILE")"
+                        if ! printf '%s' "$PREVIOUS_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+                          echo "The saved previous-release SHA is invalid; refusing deployment." >&2
+                          exit 1
+                        fi
+                      fi
+
+                      # Verify rollback readiness before risking the current release.
+                      if [ -n "$PREVIOUS_SHA" ]; then
+                        PREVIOUS_DIR="$ROOT/releases/$PREVIOUS_SHA"
+                        PREVIOUS_COMPOSE="$PREVIOUS_DIR/.docker/docker-compose-prod.yml"
+                        PREVIOUS_TAG="sha-$(printf '%s' "$PREVIOUS_SHA" | cut -c1-7)"
+
+                        if [ ! -f "$PREVIOUS_COMPOSE" ] ||
+                           [ ! -f "$PREVIOUS_DIR/.docker/Caddyfile" ] ||
+                           [ ! -f "$PREVIOUS_DIR/server/.env.production" ]; then
+                          echo "Previous release configuration is incomplete; refusing deployment." >&2
+                          exit 1
+                        fi
+
+                        if ! IMAGE_TAG="$PREVIOUS_TAG" \
+                          docker compose -f "$PREVIOUS_COMPOSE" config -q; then
+                          echo "Previous release configuration is invalid; refusing deployment." >&2
+                          exit 1
+                        fi
+
+                        if ! IMAGE_TAG="$PREVIOUS_TAG" \
+                          docker compose -f "$PREVIOUS_COMPOSE" pull server client; then
+                          echo "Previous GHCR images are unavailable; refusing deployment." >&2
+                          exit 1
+                        fi
+
+                        echo "Previous GHCR release is ready for rollback: $PREVIOUS_TAG"
+                      else
+                        echo "No previous successful release recorded; rollback will not be attempted if this first deployment fails."
+                      fi
+
+                      # Validate and pull the candidate BEFORE stopping production.
+                      export IMAGE_TAG
+                      docker compose -f "$COMPOSE_FILE" config -q
+                      docker compose -f "$COMPOSE_FILE" pull server client
+
+                      wait_for_health() {
+                        attempt=1
+                        while [ "$attempt" -le 12 ]; do
+                          if curl -fsS --max-time 10 "$HEALTH_URL" >/dev/null; then
+                            return 0
+                          fi
+                          if [ "$attempt" -lt 12 ]; then
+                            sleep 5
+                          fi
+                          attempt=$((attempt + 1))
+                        done
+                        return 1
+                      }
+
+                      echo "Deploying GHCR release $IMAGE_TAG"
+
+                      DEPLOY_OK=0
+                      if docker compose -f "$COMPOSE_FILE" down --remove-orphans &&
+                         docker compose -f "$COMPOSE_FILE" up -d --no-build; then
+                        if wait_for_health; then
+                          DEPLOY_OK=1
+                        fi
+                      fi
+
+                      if [ "$DEPLOY_OK" -eq 1 ]; then
+                        # Persist only after the HTTPS health check passes.
+                        printf '%s\n' "$DEPLOY_SHA" > "$STATE_FILE.tmp"
+                        mv "$STATE_FILE.tmp" "$STATE_FILE"
+                        echo "Deployment succeeded: $DEPLOY_SHA"
+                        exit 0
+                      fi
+
+                      echo "Deployment failed: $DEPLOY_SHA" >&2
+                      docker compose -f "$COMPOSE_FILE" ps || true
+
+                      # First deployment: deliberately do not fall back anywhere.
+                      if [ -z "$PREVIOUS_SHA" ]; then
+                        echo "No previous successful GHCR release exists. No rollback attempted." >&2
+                        exit 1
+                      fi
+
+                      PREVIOUS_DIR="$ROOT/releases/$PREVIOUS_SHA"
+                      PREVIOUS_COMPOSE="$PREVIOUS_DIR/.docker/docker-compose-prod.yml"
+                      PREVIOUS_TAG="sha-$(printf '%s' "$PREVIOUS_SHA" | cut -c1-7)"
+
+                      if [ ! -f "$PREVIOUS_COMPOSE" ] ||
+                         [ ! -f "$PREVIOUS_DIR/.docker/Caddyfile" ] ||
+                         [ ! -f "$PREVIOUS_DIR/server/.env.production" ]; then
+                        echo "Previous release configuration is missing. Automatic rollback cannot proceed." >&2
+                        exit 1
+                      fi
+
+                      echo "Attempting rollback to $PREVIOUS_TAG"
+
+                      IMAGE_TAG="$PREVIOUS_TAG"
+                      export IMAGE_TAG
+
+                      # Pull and validate the old release before changing containers again.
+                      if ! docker compose -f "$PREVIOUS_COMPOSE" config -q ||
+                         ! docker compose -f "$PREVIOUS_COMPOSE" pull server client; then
+                        echo "Could not validate or pull the previous GHCR release. Rollback failed." >&2
+                        exit 1
+                      fi
+
+                      if docker compose -f "$PREVIOUS_COMPOSE" down --remove-orphans &&
+                         docker compose -f "$PREVIOUS_COMPOSE" up -d --no-build &&
+                         wait_for_health; then
+                        echo "Rollback succeeded: $PREVIOUS_TAG" >&2
+                        echo "The failed deployment remains marked as failed." >&2
+                        exit 1
+                      fi
+
+                      echo "Rollback to $PREVIOUS_TAG failed. Manual intervention is required." >&2
+                      docker compose -f "$PREVIOUS_COMPOSE" ps || true
+                      exit 1

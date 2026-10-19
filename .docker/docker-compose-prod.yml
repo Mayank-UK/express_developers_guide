@@ -7,10 +7,7 @@ name: express_developers_guide_prod
 
 services:
   server:
-    build:
-      context: ./../
-      dockerfile: ./.docker/server/Dockerfile.prod
-    image: express_guide_server_prod
+    image: "ghcr.io/mayank-uk/express-guide-server:${IMAGE_TAG:?IMAGE_TAG is required}"
     container_name: express_developers_guide_server_prod
     restart: unless-stopped
     # No published ports — the API stays internal; nginx's /api proxy is the
@@ -51,10 +48,7 @@ services:
         condition: service_healthy
 
   client:
-    build:
-      context: ./../
-      dockerfile: ./.docker/client/Dockerfile.prod
-    image: express_guide_client_prod
+    image: "ghcr.io/mayank-uk/express-guide-client:${IMAGE_TAG:?IMAGE_TAG is required}"
     container_name: express_developers_guide_client_prod
     restart: unless-stopped
     # No published ports — Caddy is the front door now (TLS on :443); nginx
