@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import FilesWorkbenchDemo from './files_workbench_demo';
 
 afterEach(() => {
@@ -72,9 +72,9 @@ function stubFilesServer(overrides: { uploadError?: unknown } = {}) {
     const method = init?.method ?? 'GET';
     const rangeHeader =
       init !== undefined &&
-      typeof init.headers === 'object' &&
-      init.headers !== null &&
-      !Array.isArray(init.headers)
+        typeof init.headers === 'object' &&
+        init.headers !== null &&
+        !Array.isArray(init.headers)
         ? (init.headers as Record<string, string>).Range
         : undefined;
 
@@ -220,8 +220,11 @@ describe('FilesWorkbenchDemo — five panels over the real endpoints', () => {
     // the test before its own find budgets could elapse.
     await screen.findByTestId('files-library', {}, { timeout: 14000 });
 
+    const rangeButton = screen.getByTestId('files-range-0-99');
+    await waitFor(() => expect(rangeButton).toBeEnabled());
+
     // Closed range — exactly 100 of 2048 bytes:
-    fireEvent.click(screen.getByTestId('files-range-0-99'));
+    fireEvent.click(rangeButton);
     let result = await screen.findByTestId('files-range-result', {}, { timeout: 14000 });
     expect(result).toHaveTextContent('206');
     expect(result).toHaveTextContent('Content-Range → bytes 0-99/2048');

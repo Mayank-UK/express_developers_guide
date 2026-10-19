@@ -88,7 +88,13 @@ describe('GET /api/demo/deploy/stack — the declared compose services', () => {
     expect(dev?.file).toBe('.docker/docker-compose.yml');
     expect(dev?.services).toEqual(['server', 'client', 'redis', 'mongo']);
     expect(prod?.file).toBe('.docker/docker-compose-prod.yml');
-    expect(prod?.services).toEqual(['server', 'client', 'redis']);
+    expect(prod?.services).toEqual([
+      'server',
+      'client',
+      'redis',
+      'mongo',
+      'caddy',
+    ]);
     // Both real files parsed cleanly — no degradation notes.
     expect(dev?.note).toBeUndefined();
     expect(prod?.note).toBeUndefined();

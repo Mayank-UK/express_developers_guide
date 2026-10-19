@@ -204,10 +204,7 @@ CMD ["nginx", "-g", "daemon off;"]`,
             'PROD (.docker/docker-compose-prod.yml): the image is the artifact — internal API, healthchecks everywhere, wired optional services, named volumes for state',
           source: '.docker/docker-compose-prod.yml',
           code: `  server:
-    build:
-      context: ./../
-      dockerfile: ./.docker/server/Dockerfile.prod
-    image: express_guide_server_prod
+    image: "ghcr.io/mayank-uk/express-guide-server:\${IMAGE_TAG:?IMAGE_TAG is required}"
     restart: unless-stopped
     # No published ports — the API stays internal; nginx's /api proxy is the
     # only caller. Debug hatch: - "127.0.0.1:4000:4000"
@@ -539,7 +536,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));`,
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
@@ -549,8 +546,8 @@ jobs:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -565,8 +562,8 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -582,11 +579,11 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Full history — a leak in an old commit is still a leak.
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v6`,
+      - uses: gitleaks/gitleaks-action@v3`,
         },
         {
           kind: 'text',
