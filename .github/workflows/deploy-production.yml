@@ -117,7 +117,6 @@ jobs:
                   host: ${{ secrets.VM_HOST }}
                   username: ${{ secrets.VM_USER }}
                   key: ${{ secrets.VM_PRIVATE_KEY }}
-                  passphrase: ${{ secrets.VM_PRIVATE_KEY_PASSPHRASE }}
                   fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
                   command_timeout: 1m
                   script: |
@@ -130,7 +129,6 @@ jobs:
                   host: ${{ secrets.VM_HOST }}
                   username: ${{ secrets.VM_USER }}
                   key: ${{ secrets.VM_PRIVATE_KEY }}
-                  passphrase: ${{ secrets.VM_PRIVATE_KEY_PASSPHRASE }}
                   fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
                   source: '.docker/docker-compose-prod.yml,.docker/Caddyfile,server/.env.production'
                   target: '/home/ubuntu/express_developers_guide/releases/${{ steps.tag.outputs.sha }}'
@@ -147,7 +145,6 @@ jobs:
                   host: ${{ secrets.VM_HOST }}
                   username: ${{ secrets.VM_USER }}
                   key: ${{ secrets.VM_PRIVATE_KEY }}
-                  passphrase: ${{ secrets.VM_PRIVATE_KEY_PASSPHRASE }}
                   fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
                   envs: DEPLOY_SHA,IMAGE_TAG,GHCR_USER,GHCR_PULL_TOKEN
                   command_timeout: 10m
