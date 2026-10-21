@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:26-alpine
 WORKDIR /app
 # better-sqlite3's install runs node-gyp via npm's binding.gyp default —
 # python3/make/g++ or npm ci fails ("gyp ERR! find Python"). The dev image
