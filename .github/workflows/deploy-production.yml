@@ -153,7 +153,11 @@ jobs:
                   fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
                   source: '.docker/docker-compose-platform.yml,.docker/Caddyfile'
                   target: '/home/ubuntu/express_developers_guide/platform'
-                  strip_components: 0
+                  # Strip the leading .docker/ so the files land FLAT in
+                  # platform/ — the deploy script and the compose file's
+                  # relative ./Caddyfile and ./upstream.caddy binds both
+                  # expect them as siblings of the compose file.
+                  strip_components: 1
 
             - name: Transfer release configuration
               uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
