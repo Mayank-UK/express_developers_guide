@@ -253,12 +253,18 @@ COPY server/tsconfig.json ./
 COPY server/src ./src
 RUN npm run build
 
-# ---- prod-deps stage: install PRODUCTION deps (with their native build) ----
-FROM node:22-alpine AS prod-deps
+# ---- prod-deps stage: install PRODUCTION deps on the BUILDER'S CPU ----
+FROM --platform=$BUILDPLATFORM node:22-alpine AS prod-deps
+ARG TARGETPLATFORM
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY server/package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev && \\
+    case "$TARGETPLATFORM" in \\
+      linux/arm64) test -f node_modules/better-sqlite3/prebuilds/linuxmusl-arm64.node || { echo 'FAIL: linuxmusl-arm64 prebuild missing'; exit 1; } ;; \\
+      linux/amd64) test -f node_modules/better-sqlite3/prebuilds/linuxmusl-x64.node || { echo 'FAIL: linuxmusl-x64 prebuild missing'; exit 1; } ;; \\
+      *) echo "FAIL: unsupported TARGETPLATFORM: $TARGETPLATFORM"; exit 1 ;; \\
+    esac
 
 # ---- runtime stage: node + built artifacts, NO compilers in the image ----
 FROM node:22-alpine

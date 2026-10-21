@@ -20,22 +20,36 @@ COPY server/tsconfig.json ./
 COPY server/src ./src
 RUN npm run build
 
-# ---- prod-deps stage: install PRODUCTION deps (with their native build) ----
-# NO --platform=$BUILDPLATFORM here, deliberately. This stage resolves to the
-# image's TARGET architecture because its node_modules SHIP to the runtime
-# and must carry the target CPU's native binaries (better-sqlite3's bundled
-# musl prebuild). An amd64 runner publishing arm64 therefore pays QEMU
-# emulation exactly here, and only here — the one stage whose output is
-# architecture-bound. Cross-compiling THIS stage would ship amd64 binaries to
-# an arm64 VM.
-FROM node:22-alpine AS prod-deps
-# Same toolchain, same reason: `npm ci --omit=dev` still runs the gyp default.
+# ---- prod-deps stage: install PRODUCTION deps on the BUILDER'S CPU ----
+# CROSS-COMPILED now too, deliberately. better-sqlite3 v13 ships NO install
+# script and BUNDLES per-platform N-API prebuilds inside the npm tarball
+# (node_modules/better-sqlite3/prebuilds/ carries linuxmusl-arm64.node,
+# linuxmusl-x64.node, and the rest), and its runtime loader PREFERS the
+# bundled prebuild over any build/Release output — so `npm ci --omit=dev`
+# executes nothing that must run on the target CPU (and needs no
+# --ignore-scripts: there is no install script to silence). Running it on
+# $BUILDPLATFORM keeps the WHOLE server build QEMU-free — the emulated leg
+# once crashed right here on an amd64 runner ("qemu: uncaught target
+# signal 4", npm ci under arm64 emulation). The case-assertion below keeps
+# the old safety property fail-loud: a wrong-arch node_modules can never
+# ship silently — every install must prove the target's musl prebuild
+# is present.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS prod-deps
+ARG TARGETPLATFORM
+# Toolchain stays (seconds, native, zero QEMU): npm's legacy binding.gyp
+# default still fires `node-gyp rebuild` here, and node-gyp will not even
+# start without python3 (make/g++ cover the fallback compile path).
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY server/package*.json ./
-# Cache mount: the (possibly emulated) install reuses the npm download cache
+# Cache mount: the now-always-native install reuses the npm download cache
 # across builds instead of re-fetching every cold run.
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev && \
+    case "$TARGETPLATFORM" in \
+      linux/arm64) test -f node_modules/better-sqlite3/prebuilds/linuxmusl-arm64.node || { echo 'FAIL: linuxmusl-arm64 prebuild missing'; exit 1; } ;; \
+      linux/amd64) test -f node_modules/better-sqlite3/prebuilds/linuxmusl-x64.node || { echo 'FAIL: linuxmusl-x64 prebuild missing'; exit 1; } ;; \
+      *) echo "FAIL: unsupported TARGETPLATFORM: $TARGETPLATFORM"; exit 1 ;; \
+    esac
 
 # ---- runtime stage: node + built artifacts, NO compilers in the image ----
 FROM node:22-alpine

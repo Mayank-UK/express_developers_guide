@@ -263,8 +263,9 @@ jobs:
                   short_sha="$(printf '%s' "$GITHUB_SHA" | cut -c1-7)"
                   echo "tag=sha-${short_sha}" >> "$GITHUB_OUTPUT"
 
-            # Unconditional: the server's prod-deps stage still runs under
-            # emulation when the VM is arm64; on amd64 targets this is a no-op.
+            # Zero-emulation since prod-deps moved to $BUILDPLATFORM (better-
+            # sqlite3 bundles musl prebuilds). Kept as cheap insurance for any
+            # future target-arch RUN step; a no-op when arches already match.
             - name: Set up QEMU
               uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 

@@ -186,13 +186,16 @@ export function createAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig
           caption:
             'Verbatim — NODE_ENV earning its keep in the real prod image (.docker/server/Dockerfile.prod): the prod-deps stage installs with --omit=dev, the runtime stage sets the behavior switch',
           source: '.docker/server/Dockerfile.prod',
-          code: `# ---- prod-deps stage: install PRODUCTION deps (with their native build) ----
-FROM node:22-alpine AS prod-deps
-# Same toolchain, same reason: \`npm ci --omit=dev\` still runs the gyp default.
+          code: `# ---- prod-deps stage: install PRODUCTION deps on the BUILDER'S CPU ----
+FROM --platform=$BUILDPLATFORM node:22-alpine AS prod-deps
+ARG TARGETPLATFORM
+# Toolchain stays (seconds, native, zero QEMU): npm's legacy binding.gyp
+# default still fires \`node-gyp rebuild\` here, and node-gyp will not even
+# start without python3 (make/g++ cover the fallback compile path).
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY server/package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev            # ← the install-time consequence:
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev && \\   # ← the install-time consequence:
                                  #    devDependencies never reach the runtime image
 
 # ---- runtime stage: node + built artifacts, NO compilers in the image ----
