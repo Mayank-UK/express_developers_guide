@@ -203,7 +203,8 @@ jobs:
                   fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
                   command_timeout: 1m
                   capture_stdout: true
-                  script: uname -m
+                  # Banner noise in the captured stdout is why the marker exists.
+                  script: echo "VM_ARCH_MARKER=$(uname -m)"
 
             - name: Map uname output to a Docker platform architecture
               id: arch
@@ -212,9 +213,15 @@ jobs:
                   VM_UNAME: ${{ steps.vm.outputs.stdout }}
               run: |
                   set -euo pipefail
-                  # capture_stdout hands back the raw stdout — trim any
-                  # trailing newline/whitespace before matching.
-                  raw="$(printf '%s' "$VM_UNAME" | tr -d '[:space:]')"
+                  # capture_stdout returns the action's banner lines around the
+                  # real value — extract ONLY the marker line, then strip any
+                  # whitespace (a bare trim once glued banner noise onto the
+                  # value and no case matched).
+                  raw="$(printf '%s' "$VM_UNAME" | sed -n 's/^VM_ARCH_MARKER=//p' | head -n 1 | tr -d '[:space:]')"
+                  if [ -z "$raw" ]; then
+                      echo "No VM_ARCH_MARKER line in SSH output; refusing to guess." >&2
+                      exit 1
+                  fi
                   case "$raw" in
                       aarch64) arch=arm64 ;;
                       x86_64 | amd64) arch=amd64 ;;
