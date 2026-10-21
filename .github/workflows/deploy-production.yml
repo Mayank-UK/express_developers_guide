@@ -1,10 +1,14 @@
 # Production deployment (blue/green, zero downtime):
 # - Successful CI on master deploys the exact commit CI built.
 # - Manual dispatch deploys a specified commit's sha-* GHCR images.
-# - A persistent platform stack (caddy + redis + mongo, project edg_platform)
-#   boots once; each release boots an app stack (server + client) under the
-#   INACTIVE color's project (edg_blue / edg_green), is probed privately,
-#   then goes live by flipping Caddy's upstream file + a graceful reload.
+# - A persistent platform stack (redis + mongo, project edg_platform) boots
+#   once; the TLS edge is the infra repo's ONE shared `caddy` container,
+#   which publishes 80/443 for the whole VM and reaches this app's
+#   edg_client_<color> containers over the shared edg_frontend network.
+# - Each release boots an app stack (server + client) under the INACTIVE
+#   color's project (edg_blue / edg_green), is probed privately, then goes
+#   live by rewriting the flip file the shared caddy bind-mounts
+#   (platform/upstream.caddy) + a graceful `docker exec caddy caddy reload`.
 # - The live color is never touched until the new one is healthy: a
 #   pre-flip failure cleans up the failed attempt with zero impact; a
 #   post-flip failure flips back to the still-running old color (instant
@@ -114,7 +118,6 @@ jobs:
                   set -euo pipefail
                   test -f .docker/docker-compose-platform.yml
                   test -f .docker/docker-compose-prod.yml
-                  test -f .docker/Caddyfile
                   test -f server/.env.production.example
                   # The app stack's env_file must resolve for config -q; the
                   # real file is materialized from the secret in the next step.
@@ -151,12 +154,13 @@ jobs:
                   username: ${{ secrets.VM_USER }}
                   key: ${{ secrets.VM_PRIVATE_KEY }}
                   fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
-                  source: '.docker/docker-compose-platform.yml,.docker/Caddyfile'
+                  source: '.docker/docker-compose-platform.yml'
                   target: '/home/ubuntu/express_developers_guide/platform'
-                  # Strip the leading .docker/ so the files land FLAT in
-                  # platform/ — the deploy script and the compose file's
-                  # relative ./Caddyfile and ./upstream.caddy binds both
-                  # expect them as siblings of the compose file.
+                  # Strip the leading .docker/ so the compose file lands
+                  # FLAT in platform/ — where the deploy script expects it,
+                  # beside the upstream.caddy flip file it writes. That flip
+                  # file is bind-mounted read-only by the infra repo's
+                  # shared caddy; nothing else transfers with the platform.
                   strip_components: 1
 
             - name: Transfer release configuration
@@ -199,7 +203,6 @@ jobs:
                       test -f "$APP_COMPOSE"
                       test -f "$RELEASE_DIR/server/.env.production"
                       test -f "$PLATFORM_COMPOSE"
-                      test -f "$ROOT/platform/Caddyfile"
 
                       mkdir -p "$STATE_DIR"
 
@@ -263,10 +266,14 @@ jobs:
                         fi
                         HAD_ACTIVE_COLOR=1
                       fi
-                      # First deploy targets blue; the platform's upstream then
-                      # 502s (nothing is live yet) until the flip below.
+                      # First deploy targets blue; the shared caddy's
+                      # upstream then 502s (nothing is live yet) until the
+                      # flip below.
                       ACTIVE_COLOR="${ACTIVE_COLOR:-blue}"
 
+                      # Point the SHARED caddy's flip file (bind-mounted
+                      # read-only by the infra repo's container) at the
+                      # color that should serve once the flip lands.
                       printf 'reverse_proxy edg_client_%s:80\n' "$ACTIVE_COLOR" \
                         > "$ROOT/platform/upstream.caddy"
                       docker compose -f "$PLATFORM_COMPOSE" -p edg_platform up -d --wait
@@ -309,10 +316,10 @@ jobs:
                         exit 1
                       fi
 
-                      # ── 8. Flip: upstream file + graceful caddy reload ──────────
+                      # ── 8. Flip: upstream file + reload the shared caddy ────────
                       printf 'reverse_proxy edg_client_%s:80\n' "$COLOR" \
                         > "$ROOT/platform/upstream.caddy"
-                      docker exec edg_caddy caddy reload --config /etc/caddy/Caddyfile
+                      docker exec caddy caddy reload --config /etc/caddy/Caddyfile
 
                       wait_for_health() {
                         attempt=1
@@ -360,7 +367,7 @@ jobs:
                         echo "Flipping back to the still-running color $ACTIVE_COLOR." >&2
                         printf 'reverse_proxy edg_client_%s:80\n' "$ACTIVE_COLOR" \
                           > "$ROOT/platform/upstream.caddy"
-                        docker exec edg_caddy caddy reload --config /etc/caddy/Caddyfile
+                        docker exec caddy caddy reload --config /etc/caddy/Caddyfile
                         if wait_for_health; then
                           echo "Rollback succeeded: $ACTIVE_COLOR is serving again." >&2
                         else

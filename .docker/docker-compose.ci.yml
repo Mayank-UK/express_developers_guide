@@ -11,10 +11,9 @@
 #   each file BEFORE merging, so the prod file's ${IMAGE_TAG:?} still fires —
 #   the sibling .env in this directory (IMAGE_TAG=ci) is what auto-loads to
 #   satisfy it: no registry, no IMAGE_TAG env, `config -q` succeeds bare;
-# - caddy (the TLS edge, now owned by the PLATFORM file) is dropped via an
-#   inactive profile: a service under a profile that is not enabled is
-#   excluded, so its 80/443 publishes and its ACME/Let's-Encrypt behavior
-#   never run on a CI runner;
+# - the platform file ships NO caddy at all — the TLS edge is the infra
+#   repo's shared caddy and never runs in CI; the client's loopback 8080
+#   publish below remains the e2e front door;
 # - redis + mongo also come from the platform file — unchanged here, the
 #   e2e demo specs exercise them live;
 # - the client (nginx) publishes on the loopback only — exactly where prod's
@@ -39,7 +38,3 @@ services:
         container_name: express_developers_guide_ci_client
         ports:
             - "127.0.0.1:8080:80"
-
-    caddy:
-        profiles:
-            - ci-disabled

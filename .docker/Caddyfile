@@ -1,10 +1,11 @@
-# TLS front door: Caddy terminates HTTPS for the DuckDNS hostname with
-# automatic Let's Encrypt certificates. The proxy target is IMPORTED from a
-# separate one-line file (upstream.caddy, written by the deploy):
-#   reverse_proxy edg_client_blue:80    # or edg_client_green:80
-# A release flips the upstream by rewriting that file and running a graceful
-# `docker exec edg_caddy caddy reload --config /etc/caddy/Caddyfile` — no
-# TLS blip, in-flight requests drain.
+# REFERENCE site definition — retained for teaching, NOT shipped to the
+# VM: nothing in this repo transfers or mounts it. The LIVE site block
+# lives in the infra repo's shared caddy (/opt/caddy/conf.d/edg.caddy on
+# the VM), which imports its own read-only bind mount of the one-line flip
+# file (upstream.caddy, written by the deploy). A release flips that file
+# and activates it with a graceful
+# `docker exec caddy caddy reload --config /etc/caddy/Caddyfile` — no TLS
+# blip, in-flight requests drain.
 expressdevelopersguide.duckdns.org {
     import /etc/caddy/upstream.caddy
 }

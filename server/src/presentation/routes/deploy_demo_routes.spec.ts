@@ -88,7 +88,8 @@ describe('GET /api/demo/deploy/stack — the declared compose services', () => {
     expect(dev?.file).toBe('.docker/docker-compose.yml');
     expect(dev?.services).toEqual(['server', 'client', 'redis', 'mongo']);
     // The blue/green split: the prod APP stack carries only the stateless
-    // pair; caddy/redis/mongo moved to the persistent platform file.
+    // pair; redis/mongo live in the persistent platform file, and the TLS
+    // edge is the infra repo's shared caddy.
     expect(prod?.file).toBe('.docker/docker-compose-prod.yml');
     expect(prod?.services).toEqual(['server', 'client']);
     // Both real files parsed cleanly — no degradation notes.
