@@ -297,13 +297,16 @@ jobs:
                   cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
     # GHCR tag retention: every master push leaves one sha-<7> version per
-    # package in the registry, and repointing the floating `master` tag
-    # orphans the previous version as UNTAGGED — unreachable by any pull.
-    # This job deletes sha-tagged versions beyond the newest 10 (keep-10
-    # aligns with the VM's keep-5 release dirs plus margin for
-    # workflow_dispatch rollback targets) and those untagged orphans; the
-    # `master`/`latest` tags themselves are never pruned, and individual
-    # delete failures only warn — hygiene must never block CD.
+    # package. This job deletes sha-tagged versions beyond the newest 10 —
+    # keep-10 aligns with the VM's keep-5 release dirs plus margin for
+    # workflow_dispatch rollback targets; versions carrying `master`/`latest`
+    # are never pruned. UNTAGGED versions are NEVER deleted: GHCR lists every
+    # manifest as a version, so a tagged index has untagged CHILDREN (per-arch
+    # images, provenance/SBOM attestations) and deleting untagged versions
+    # breaks the tagged pull (2026-10-21 incident: an untagged sweep killed
+    # the children of a freshly published image and took the deploy down).
+    # Untagged accumulation is accepted and bounded; delete failures only
+    # warn — hygiene must never block CD.
     ghcr-prune:
         name: Prune old GHCR image tags
         needs: [build-push]
@@ -368,33 +371,35 @@ jobs:
                           return 0
                       fi
 
-                      # (2) sha-tagged versions, newest first; (3) candidates:
-                      # those beyond the newest $keep minus any version still
-                      # carrying a protected tag, PLUS every UNTAGGED version —
-                      # an untagged GHCR version is unreachable by any pull,
-                      # pure garbage (the orphan each master repoint leaves).
+                      # (2) sha-tagged versions, newest first; (3) candidates
+                      # are those beyond the newest $keep minus any version
+                      # still carrying a protected tag. UNTAGGED versions are
+                      # deliberately absent from this rule: the versions API
+                      # exposes no parent/referrer link, so garbage orphans
+                      # and the live children of KEPT indexes are
+                      # indistinguishable — the 2026-10-21 incident deleted
+                      # freshly pushed children and broke every pull.
                       local candidates
                       candidates="$(printf '%s' "$merged" | jq --argjson keep "$keep" '
-                          . as $all
-                          | [ $all[] | select((.metadata.container.tags // [])
-                                | any(.[]; test("^sha-[0-9a-f]{7}$"))) ] as $sha
-                          | ($sha | sort_by(.created_at) | reverse | .[$keep:]
-                               | map(select(((.metadata.container.tags // []) | index("master") | not) and
-                                            ((.metadata.container.tags // []) | index("latest") | not))))
-                            + [ $all[] | select((.metadata.container.tags // [] | length) == 0) ]
+                          [ .[]
+                            | select((.metadata.container.tags // [])
+                                 | any(.[]; test("^sha-[0-9a-f]{7}$"))) ]
+                          | sort_by(.created_at) | reverse
+                          | .[$keep:]
+                          | map(select(
+                                ((.metadata.container.tags // []) | index("master") | not) and
+                                ((.metadata.container.tags // []) | index("latest") | not)))
                       ')"
 
                       # (4) Deletes are individually NON-FATAL: a failure warns
                       # and the loop continues — hygiene must never block CD.
-                      local total sha_count untagged_count
+                      local total
                       total="$(printf '%s' "$candidates" | jq 'length')"
                       if [ "$total" -eq 0 ]; then
                           echo "$pkg: nothing to prune"
                           return 0
                       fi
-                      sha_count="$(printf '%s' "$candidates" | jq '[ .[] | select((.metadata.container.tags // []) | any(.[]; test("^sha-[0-9a-f]{7}$"))) ] | length')"
-                      untagged_count=$((total - sha_count))
-                      echo "$pkg: pruning $total version(s) — $sha_count sha-tagged beyond the newest $keep, $untagged_count untagged orphan(s)"
+                      echo "$pkg: pruning $total sha-tagged version(s) beyond the newest $keep"
                       local id tags
                       while read -r id tags; do
                           curl -fsS --max-time 30 -X DELETE \
