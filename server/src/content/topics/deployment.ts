@@ -1030,9 +1030,9 @@ docker compose -f .docker/docker-compose-platform.yml -p edg_platform ps
 # through the stack — Caddy's front door when the host has the DNS record
 # and open 80/443; on a purely local run, boot with the CI override and its
 # 127.0.0.1:8080 publish instead:
-curl -s https://expressdevelopersguide.duckdns.org/api/health          # liveness, THROUGH the proxies
-curl -s https://expressdevelopersguide.duckdns.org/api/posts | head -5 # sqlite + the whole stack, end to end
-curl -s -o /dev/null -w '%{http_code}\\n' https://expressdevelopersguide.duckdns.org/   # the client shell itself
+curl -s https://expressdevelopersguide.makbuilds.duckdns.org/api/health          # liveness, THROUGH the proxies
+curl -s https://expressdevelopersguide.makbuilds.duckdns.org/api/posts | head -5 # sqlite + the whole stack, end to end
+curl -s -o /dev/null -w '%{http_code}\\n' https://expressdevelopersguide.makbuilds.duckdns.org/   # the client shell itself
 
 docker logs edg_server_blue 2>&1 | grep listening
 

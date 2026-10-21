@@ -198,7 +198,7 @@ jobs:
                       STATE_DIR="$ROOT/.deploy"
                       STATE_FILE="$STATE_DIR/last-successful-sha"
                       COLOR_FILE="$STATE_DIR/active-color"
-                      HEALTH_URL="https://expressdevelopersguide.duckdns.org/api/health"
+                      HEALTH_URL="https://expressdevelopersguide.makbuilds.duckdns.org/api/health"
 
                       test -f "$APP_COMPOSE"
                       test -f "$RELEASE_DIR/server/.env.production"
