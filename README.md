@@ -24,26 +24,27 @@ The integrated terminal is the `dev` tooling container — for tests (`cd server
 docker compose -f .docker/docker-compose.yml up
 ```
 
-Production stack (nginx-served client + prod server images — the full demo set: redis and mongo wired, datastores internal-only, Caddy publishes the only public ports: 80/443):
+Production stack — a **persistent platform** (Caddy TLS edge, redis, mongo) plus per-release **colored app stacks** (blue/green; server + client). Local boot of the same images uses the CI override (client on `127.0.0.1:8080`, no ACME):
 
 ```bash
-docker compose -f .docker/docker-compose-prod.yml up --build
+docker network create edg_frontend 2>/dev/null || true; docker network create edg_backend 2>/dev/null || true
+for v in express_developers_guide_prod_redis_data express_developers_guide_prod_mongo_data express_developers_guide_prod_caddy_data express_developers_guide_prod_caddy_config express_developers_guide_prod_server_data; do docker volume inspect "$v" >/dev/null 2>&1 || docker volume create "$v"; done
+cp server/.env.production.example server/.env.production
+docker compose -f .docker/docker-compose-platform.yml -f .docker/docker-compose-prod.yml -f .docker/docker-compose.ci.yml up -d --wait
 ```
 
 ### Production operations
 
-Build with versioned image tags so every release is a named artifact you can roll back to (compose builds the `image:` names; `docker tag` freezes a version):
+Deploys are **zero-downtime blue/green**: the platform stack (project `edg_platform` — caddy + redis + mongo, booted once and untouched by releases) stays up while every release boots an app stack (server + client) under the *inactive* color's project (`edg_blue` / `edg_green`, from `.docker/docker-compose-prod.yml` with `COLOR` + `IMAGE_TAG` exported). The new color is probed privately (`busybox wget` inside its own `app_internal` network), then goes live by rewriting `~/express_developers_guide/platform/upstream.caddy` (`reverse_proxy edg_client_<color>:80`) and running `docker exec edg_caddy caddy reload --config /etc/caddy/Caddyfile` — a graceful reload, no TLS blip. The GitHub workflow `deploy-production.yml` runs the whole state machine (probe → flip → public health gate → retire the old color → prune).
 
-```bash
-docker compose -f .docker/docker-compose-prod.yml build
-docker tag express_guide_server_prod express_guide_server_prod:v1.0.0
-docker tag express_guide_client_prod express_guide_client_prod:v1.0.0
-```
-
-- **Update** — build and tag the new version, `docker compose -f .docker/docker-compose-prod.yml up -d`, then verify the front door: `curl https://expressdevelopersguide.duckdns.org/api/health` reports `status: "ok"` (on a local run without the DNS record, use the commented `127.0.0.1:8080` hatch).
-- **Rollback** — retag the previous version onto the compose `image:` names (or point the file at the old tag) and `up -d` again — that is the whole reason versioned tags exist.
-- **Bad release** — same rollback; the sqlite database, redis state, and mongo data live in the named volumes `server_data`, `redis_data`, and `mongo_data`, so they survive container recreation (only `down -v` discards them).
-- **TLS** — terminated by Caddy (`expressdevelopersguide.duckdns.org`, automatic Let's Encrypt, HTTP/3) when the stack runs on a host with that DNS record and open 80/443; a purely local run cannot provision certificates (no ACME challenge reaches it) — use the commented loopback hatches (8080/4000) for local access instead.
+- **Secrets** — `server/.env.production` is **not in git** (only the committed `.example` template). The real file is materialized on the deploy runner from the `production` GitHub environment's `PROD_ENV_B64` secret, scp'd to the release dir, and never echoed. One-time setup: `base64 < server/.env.production | gh secret set PROD_ENV_B64 --env production` (or the UI). The job also needs `VM_HOST`, `VM_USER`, `VM_PRIVATE_KEY`, `VM_HOST_FINGERPRINT`, `GHCR_USER`, `GHCR_PULL_TOKEN`.
+- **First deploy after the blue/green split** — migrates the legacy single stack: the old `express_developers_guide_prod` project is stopped once so the platform can adopt its named volumes (one ~seconds availability blip, documented in the workflow). Fresh VMs skip this — no legacy state exists.
+- **Update** — push to `master` (CI green ⇒ automatic deploy of that exact commit) or `workflow_dispatch` with a `sha-<7>` tag. Failure before the flip: the failed color is torn down, the live color never noticed. Failure after the flip: Caddy flips back to the still-running previous color (instant rollback).
+- **Manual rollback** — `printf 'reverse_proxy edg_client_<color>:80\n' > ~/express_developers_guide/platform/upstream.caddy && docker exec edg_caddy caddy reload --config /etc/caddy/Caddyfile` (the old color keeps running until the next deploy retires it), or re-run `workflow_dispatch` with the previous sha — `cat ~/express_developers_guide/.deploy/last-successful-sha` names it.
+- **Release retention** — the VM keeps the newest 5 release dirs (`~/express_developers_guide/releases/<sha>/`), never deleting the active or previous one.
+- **Data** — sqlite, redis, mongo, and caddy certificates live in external named volumes (`express_developers_guide_prod_*`), adopted across colors and releases; only an explicit `docker volume rm` discards them (`down` never does).
+- **Branch protection for `master`** (the deploy trigger) — require status checks `server`, `client`, `secrets`, `e2e`; require branches to be up to date before merging; include administrators.
+- **TLS** — terminated by Caddy (`expressdevelopersguide.duckdns.org`, automatic Let's Encrypt, HTTP/3) when the stack runs on a host with that DNS record and open 80/443; a purely local run cannot provision certificates — use the CI override's `127.0.0.1:8080` client publish.
 - **Sizing** — measured at ~90 MiB total memory on the local machine; re-measure on the actual target VM before sizing it.
 
 > Host-native dev (`npm install` in `server/` and `client/` with a local Node 22) is still possible, but the project's standard environment is the devcontainer — the repo intentionally carries no host `node_modules`.
@@ -60,7 +61,7 @@ Inside the devcontainer (or, less commonly, in `server/` and `client/` with a lo
 | ------- | --- | ----- |
 | Client  | http://localhost:5173 | Vite dev server; `/api` proxied to the server |
 | Server  | http://localhost:4000 | Express API on the **dev** stack — try `GET /api/health` or browse `/docs/`; in the prod stack the API stays internal behind the Caddy → nginx proxy chain |
-| Client (prod) | https://expressdevelopersguide.duckdns.org | Caddy TLS edge → nginx serving the built client, `/api` proxied to the server service; `127.0.0.1:8080` works only via the commented debug hatch |
+| Client (prod) | https://expressdevelopersguide.duckdns.org | Caddy TLS edge → nginx serving the built client, `/api` proxied to the server of the active color; local runs use the CI override's `127.0.0.1:8080` publish |
 | Redis · Mongo | 127.0.0.1:6379 · 127.0.0.1:27017 | published by the **dev** stack only (incl. the devcontainer's); the prod stack ships both services but keeps them internal to the compose network |
 
 ## Layout

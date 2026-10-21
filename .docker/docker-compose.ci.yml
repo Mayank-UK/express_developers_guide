@@ -1,0 +1,45 @@
+# CI override — merged OVER the platform + prod compose files by the CI
+# workflow's e2e job (and by local dry-runs of the same flow):
+#   docker compose -f .docker/docker-compose-platform.yml \
+#     -f .docker/docker-compose-prod.yml \
+#     -f .docker/docker-compose.ci.yml up -d --wait
+#
+# What the override changes, and why:
+# - server/client images are pinned to the locally built :ci tags, and their
+#   container names are pinned to fixed *_ci names (the app file's
+#   ${COLOR:-blue} interpolation then cannot matter). Compose interpolates
+#   each file BEFORE merging, so the prod file's ${IMAGE_TAG:?} still fires —
+#   the sibling .env in this directory (IMAGE_TAG=ci) is what auto-loads to
+#   satisfy it: no registry, no IMAGE_TAG env, `config -q` succeeds bare;
+# - caddy (the TLS edge, now owned by the PLATFORM file) is dropped via an
+#   inactive profile: a service under a profile that is not enabled is
+#   excluded, so its 80/443 publishes and its ACME/Let's-Encrypt behavior
+#   never run on a CI runner;
+# - redis + mongo also come from the platform file — unchanged here, the
+#   e2e demo specs exercise them live;
+# - the client (nginx) publishes on the loopback only — exactly where prod's
+#   commented debug hatch puts it — so the health probe and Playwright reach
+#   the real front door at 127.0.0.1:8080;
+# - the job creates the external edg_frontend/edg_backend networks and the
+#   five external volumes idempotently before `up` (external resources are
+#   looked up, never created, by compose itself). `down -v` then removes
+#   only what the project owns — external volumes are never touched.
+#
+# The distinct project name isolates CI runs from the real prod stacks'
+# containers and volumes.
+name: express_developers_guide_ci
+
+services:
+    server:
+        image: ghcr.io/mayank-uk/express-guide-server:ci
+        container_name: express_developers_guide_ci_server
+
+    client:
+        image: ghcr.io/mayank-uk/express-guide-client:ci
+        container_name: express_developers_guide_ci_client
+        ports:
+            - "127.0.0.1:8080:80"
+
+    caddy:
+        profiles:
+            - ci-disabled

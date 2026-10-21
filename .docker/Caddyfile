@@ -1,6 +1,10 @@
 # TLS front door: Caddy terminates HTTPS for the DuckDNS hostname with
-# automatic Let's Encrypt certificates and proxies to the nginx client
-# container inside the compose network.
+# automatic Let's Encrypt certificates. The proxy target is IMPORTED from a
+# separate one-line file (upstream.caddy, written by the deploy):
+#   reverse_proxy edg_client_blue:80    # or edg_client_green:80
+# A release flips the upstream by rewriting that file and running a graceful
+# `docker exec edg_caddy caddy reload --config /etc/caddy/Caddyfile` — no
+# TLS blip, in-flight requests drain.
 expressdevelopersguide.duckdns.org {
-    reverse_proxy client:80
+    import /etc/caddy/upstream.caddy
 }

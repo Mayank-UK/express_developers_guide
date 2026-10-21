@@ -23,7 +23,9 @@ export default defineConfig({
   fullyParallel: false,
   reporter: 'line',
   use: {
-    baseURL: 'http://localhost:5173',
+    // CI points this at the booted prod-image stack (nginx on 127.0.0.1:8080);
+    // locally the default stays the devcontainer's Vite server.
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
     headless: true,
     trace: 'retain-on-failure',
   },

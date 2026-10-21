@@ -159,12 +159,12 @@ CMD ["nginx", "-g", "daemon off;"]`,
       id: 'deploy-compose',
       title: 'Compose as the smallest orchestration',
       lead:
-        'One file declares the whole stack — networks, volumes, restart policies. Side by side: the dev compose you develop against and the prod compose this topic boots.',
+        'One file declares the whole stack — networks, volumes, restart policies. Side by side: the dev compose you develop against and the prod pair this repo ships (a per-release app stack plus the persistent platform underneath it).',
       blocks: [
         {
           kind: 'text',
           id: 'deploy-compose:what-compose-declares',
-          body: `A COMPOSE FILE IS A DECLARATION, not a script: "these services, these images, these networks, these volumes, these policies" — and \`docker compose up\` reconciles reality to it. That makes it the smallest real ORCHESTRATOR: far below Kubernetes, but it already owns the three concerns every orchestrator has — TOPOLOGY (the frontend/backend network split: nginx and the server sit on frontend; server, redis, and mongo sit on backend; the proxy can reach the app but NOT the databases directly), LIFECYCLE (restart policies, depends_on ordering), and STATE (named volumes that outlive containers — redis_data survives \`down\`). Service names ARE DNS: the nginx conf says \`proxy_pass http://server:4000\` and compose's embedded DNS resolves \`server\` to the container's address on the frontend network — no IPs anywhere. THE DEV/PROD PAIR in this repo teaches by contrast, quoted side by side below: dev bind-mounts LIVE SOURCE over the image (edit on the host, the container sees it) and shields the image-built node_modules behind an anonymous volume (otherwise the mount would shadow the compiled natives with the host's darwin ones — the native-module lesson again, from the other direction); prod mounts NO source — the image is the artifact, the source of truth — declares named volumes for state (server_data at /app/data, where the prod SQLITE_PATH's data/ directory lands, so the database survives container recreation), and reads its defaults from .env.production through env_file before OVERRIDING the optional-service URLs in its own environment: block (service-name addressing — the precedence chain the environments topic teaches; prod ships the FULL demo set, redis and mongo both wired). Both files give every service \`restart: unless-stopped\`, which is the process-manager section's Docker entry. TWO HARDENING FACTS about the prod file: the ONLY publicly published service is CADDY, the TLS edge — 80 for the ACME HTTP-01 challenge + redirect, 443 tcp/udp for HTTPS + HTTP/3 — while the server, nginx, and BOTH datastores stay private on the compose networks (dev publishes 6379/27017 so a HOST-run server can use them; prod has no host-run tooling), and the PROD file carries HEALTHCHECKS on every service — busybox wget probes (the API's /api/health, nginx's /), a redis-cli ping, a mongosh ping — which is what lets it use the LONG \`depends_on\` form everywhere: nginx does not start until the API answers, and the SERVER itself waits on redis and mongo \`condition: service_healthy\` because the mongo client never reopens a failed first connect — the boot race is won by declaration, not luck (Caddy chains the same gate one hop higher, waiting on nginx: datastore → API → app tier → TLS edge, all declared). Dev's \`depends_on\` stays the short form — it waits for container START, not readiness, which is exactly enough there because the server treats every optional service as "down until proven up"; the zero-downtime section shows what a full readiness gate looks like.`,
+          body: `A COMPOSE FILE IS A DECLARATION, not a script: "these services, these images, these networks, these volumes, these policies" — and \`docker compose up\` reconciles reality to it. That makes it the smallest real ORCHESTRATOR: far below Kubernetes, but it already owns the three concerns every orchestrator has — TOPOLOGY (the frontend/backend network split: nginx and the server sit on frontend; server, redis, and mongo sit on backend; the proxy can reach the app but NOT the databases directly), LIFECYCLE (restart policies, depends_on ordering), and STATE (named volumes that outlive containers — redis_data survives \`down\`). Service names ARE DNS: the nginx conf says \`proxy_pass http://server:4000\` and compose's embedded DNS resolves \`server\` to the container's address on the frontend network — no IPs anywhere. THE DEV/PROD PAIR in this repo teaches by contrast, quoted side by side below: dev bind-mounts LIVE SOURCE over the image (edit on the host, the container sees it) and shields the image-built node_modules behind an anonymous volume (otherwise the mount would shadow the compiled natives with the host's darwin ones — the native-module lesson again, from the other direction); prod mounts NO source — the image is the artifact, the source of truth — declares a named volume for state (server_data at /app/data, where the prod SQLITE_PATH's data/ directory lands, so the database survives container recreation), and reads its defaults from the materialized .env.production through env_file before OVERRIDING the optional-service URLs in its own environment: block (service-name addressing — the precedence chain the environments topic teaches; prod ships the FULL demo set, redis and mongo both wired). Both files give every service \`restart: unless-stopped\`, which is the process-manager section's Docker entry. THE PROD SIDE IS SPLIT IN TWO, because releases and infrastructure age differently: a PERSISTENT PLATFORM (docker-compose-platform.yml, project edg_platform — caddy the TLS edge, redis, mongo) boots once and is never touched by a deploy, while each release boots an APP-ONLY stack (docker-compose-prod.yml, run with \`-p edg_blue\` or \`-p edg_green\`) holding just the server + client pair. The seam between them is a pair of EXTERNAL networks — edg_frontend (caddy reaches the colored client BY CONTAINER NAME, edg_client_blue / edg_client_green) and edg_backend (each color's server reaches redis and mongo by NETWORK ALIAS) — plus EXTERNAL volumes under their legacy single-stack names, so the first blue/green deploy ADOPTS the old stack's data instead of provisioning fresh. And each color's app_internal network is deliberately PROJECT-SCOPED: nginx's baked \`proxy_pass http://server:4000\` resolves \`server\` inside the color's OWN network, so a release can never proxy to the other release's API — that project-scoped network is the entire isolation unit of the blue/green deploy. TWO HARDENING FACTS about the prod shape: the ONLY publicly published service is CADDY (80 for the ACME HTTP-01 challenge + redirect, 443 tcp/udp for HTTPS + HTTP/3) while the server, nginx, and BOTH datastores stay private on the compose networks (dev publishes 6379/27017 so a HOST-run server can use them; prod has no host-run tooling), and every service carries HEALTHCHECKS — busybox wget probes (the API's /api/health, nginx's /), a redis-cli ping, a mongosh ping. What the split COSTS is depends_on: it cannot reach across compose files, so the LOAD-BEARING boot-race guarantee (the mongo client never reopens a failed first connect — losing the race would mark a demo off for the process lifetime) moves from declaration to DEPLOY ORDERING: the platform's \`up -d --wait\` must report redis and mongo healthy BEFORE any app stack starts, and inside a color the long-form depends_on still chains nginx on its own color's API (datastore → API → app tier, with the TLS edge FLIPPED last — never restarted). Dev's \`depends_on\` stays the short form — it waits for container START, not readiness, which is exactly enough there because the server treats every optional service as "down until proven up"; the zero-downtime section shows what a full readiness gate looks like.`,
         },
         {
           kind: 'code',
@@ -201,26 +201,27 @@ CMD ["nginx", "-g", "daemon off;"]`,
           id: 'deploy-compose:side-by-side-prod',
           language: 'yaml',
           caption:
-            'PROD (.docker/docker-compose-prod.yml): the image is the artifact — internal API, healthchecks everywhere, wired optional services, named volumes for state',
+            'PROD APP STACK (.docker/docker-compose-prod.yml): the image is the artifact — healthchecks, alias-wired optional services, shared state volume; booted per release under project edg_blue / edg_green',
           source: '.docker/docker-compose-prod.yml',
           code: `  server:
     image: "ghcr.io/mayank-uk/express-guide-server:\${IMAGE_TAG:?IMAGE_TAG is required}"
+    container_name: edg_server_\${COLOR:-blue}
     restart: unless-stopped
-    # No published ports — the API stays internal; nginx's /api proxy is the
-    # only caller. Debug hatch: - "127.0.0.1:4000:4000"
     env_file:
       - ./../server/.env.production
     environment:
-      # Inside compose the optional services are reachable by service name,
-      # not localhost — and environment: beats env_file:, so these win over
-      # the .env.production values (MONGO_URI is unset there on purpose;
-      # prod ships the full demo set, both services wired).
+      # The platform datastores are reachable by their network ALIASES on
+      # the shared edg_backend network — and environment: beats env_file:,
+      # so these win over the .env.production values (MONGO_URI is unset
+      # there on purpose; prod ships the full demo set, both services
+      # wired).
       - REDIS_URL=redis://redis:6379
       - MONGO_URI=mongodb://mongo:27017/express_guide_prod
     volumes:
       # SQLITE_PATH=data/guide.db is relative to the image WORKDIR /app, so
       # /app/data is where the sqlite file lives; the named volume keeps the
-      # database across container recreation.
+      # database across container recreation — SHARED between colors (the
+      # external legacy name), so a flip inherits the live data.
       - server_data:/app/data
     healthcheck:
       # 127.0.0.1, not localhost: busybox wget resolves localhost to ::1
@@ -231,48 +232,93 @@ CMD ["nginx", "-g", "daemon off;"]`,
       retries: 3
       start_period: 15s
     networks:
-      - frontend
-      - backend
-    depends_on:
-      # Prod SHIPS the optional services, so the server waits for them: the
-      # mongo client never reopens after a failed connect, and losing the
-      # boot race would mark a demo off for the process lifetime. Dev stays
-      # dependency-free — there the services are optional by design.
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
+      - app_internal
+      - edg_backend
 
-  # … client: nginx, no published ports (Caddy's upstream), gated on the
-  # server's healthcheck …
+  # … client: nginx, no published ports — Caddy reaches it BY CONTAINER NAME
+  # (edg_client_<color>) on the shared edg_frontend network; gated on this
+  # color's server healthcheck …
   client:
-    # …
+    container_name: edg_client_\${COLOR:-blue}
+    networks:
+      - app_internal
+      - edg_frontend
     depends_on:
       server:
         condition: service_healthy
 
-  # … caddy: the TLS edge — Let's Encrypt for the DuckDNS hostname, the
-  # ONLY published service (80 + 443 tcp/udp), gated on the client's
-  # healthcheck; caddy_data persists the certificates …
-  caddy:
-    # …
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    depends_on:
-      client:
-        condition: service_healthy
-
-  # … redis + mongo: backend-only datastores, no published ports, ping
-  # healthchecks, named volumes (redis_data / mongo_data) …
+networks:
+  # Plain project-scoped network: edg_blue_app_internal /
+  # edg_green_app_internal. THIS is the isolation unit — nginx's
+  # \`proxy_pass http://server:4000\` and this depends_on resolve \`server\`
+  # inside the color's own network.
+  app_internal: {}
+  edg_frontend:
+    name: edg_frontend
+    external: true
+  edg_backend:
+    name: edg_backend
+    external: true
 
 volumes:
-  redis_data:
+  # LEGACY name from the single-stack era — external (created by the deploy)
+  # and shared across colors so sqlite survives every flip.
   server_data:
-  mongo_data:
-  caddy_data:
-  caddy_config:`,
+    name: express_developers_guide_prod_server_data
+    external: true`,
+        },
+        {
+          kind: 'code',
+          id: 'deploy-compose:platform-stack',
+          language: 'yaml',
+          caption:
+            'PROD PLATFORM (.docker/docker-compose-platform.yml): the persistent half — TLS edge + datastores, booted once, never touched by a release',
+          source: '.docker/docker-compose-platform.yml',
+          code: `name: edg_platform
+
+services:
+  # … caddy: the TLS edge — Let's Encrypt for the DuckDNS hostname, the
+  # ONLY published service (80 + 443 tcp/udp); mounts BOTH the Caddyfile
+  # and the one-line upstream.caddy the deploy flips, on the shared
+  # edg_frontend network; NO depends_on — the client lives in another
+  # project, and caddy resolves its upstream per-request (a 502 before the
+  # first app boot is acceptable and documented) …
+  caddy:
+    container_name: edg_caddy
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./upstream.caddy:/etc/caddy/upstream.caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edg_frontend
+
+  # … redis + mongo: backend datastores, no published ports, ping
+  # healthchecks, legacy-named volumes — the deploy boots this whole stack
+  # healthy BEFORE any app stack, which is the boot-race gate the split
+  # moved here from depends_on; the aliases make them answer to plain
+  # "redis" / "mongo" on the shared network …
+  redis:
+    container_name: edg_redis
+    networks:
+      edg_backend:
+        aliases:
+          - redis
+
+networks:
+  edg_frontend:
+    name: edg_frontend
+    external: true
+  edg_backend:
+    name: edg_backend
+    external: true
+
+volumes:
+  # LEGACY names from the single-stack era — external so this stack adopts
+  # the existing VM data instead of provisioning fresh volumes.
+  redis_data:
+    name: express_developers_guide_prod_redis_data
+    external: true`,
         },
         {
           kind: 'text',
@@ -285,7 +331,7 @@ volumes:
           demoId: 'deploy:stack',
           title: 'The stack explorer',
           description:
-            'Live process facts from the server answering you, the browser origin you reached it through, and the services declared by this repo\u2019s two compose files — parsed off disk, put side by side.',
+            'Live process facts from the server answering you, the browser origin you reached it through, and the services declared by this repo\u2019s dev and prod-app compose files — parsed off disk, put side by side.',
         },
       ],
     },
@@ -356,7 +402,7 @@ app.set('trust proxy', 1);`,
         {
           kind: 'text',
           id: 'deploy-proxy:tls',
-          body: `TLS, END TO END — and now actually shipped at the edge: the prod compose runs CADDY in front of the plain-HTTP nginx (automatic Let's Encrypt certificates for the DuckDNS hostname, persisted in the caddy_data volume, HTTP/3 on 443/udp) — the zero-choreography version of everything below. The MANUAL certificate flow, still worth knowing because not every edge is Caddy (Let's Encrypt as the concrete example): point DNS at the host, run certbot once (\`certbot certonly --standalone -d guide.example.test\`, or the \`--nginx\` plugin that edits the conf for you), and renewals become a cron/systemd timer (\`certbot renew\` is idempotent; certificates last 90 days on purpose). The server block below is the shipped conf UPGRADED: 443 with the cert pair, the http→https redirect so plain visits are one hop from safety, and the X-Forwarded-* lines from the last block now with \`$scheme\` (so the app sees https, not a hard-coded value). TWO CONNECTIONS to the topic chain: HSTS — helmet already sends Strict-Transport-Security (the security topic pinned it in dev, where browsers correctly ignore it over plain http); behind real TLS it becomes LOAD-BEARING, and the sketch adds nginx's own always-on copy for non-HTML responses Express never touches. And upgrade-insecure-requests in the CSP — inert in dev, now actively forcing https for every subresource. THE INTERIOR of the stack stays plain http: nginx→server traffic rides the private compose network; encrypting interior hops is a real pattern (mTLS between services) but belongs to the multi-service security conversation, not the front door.`,
+          body: `TLS, END TO END — and now actually shipped at the edge: the prod PLATFORM stack runs CADDY in front of the plain-HTTP nginx (automatic Let's Encrypt certificates for the DuckDNS hostname, persisted in the caddy_data volume, HTTP/3 on 443/udp) — the zero-choreography version of everything below. The MANUAL certificate flow, still worth knowing because not every edge is Caddy (Let's Encrypt as the concrete example): point DNS at the host, run certbot once (\`certbot certonly --standalone -d guide.example.test\`, or the \`--nginx\` plugin that edits the conf for you), and renewals become a cron/systemd timer (\`certbot renew\` is idempotent; certificates last 90 days on purpose). The server block below is the shipped conf UPGRADED: 443 with the cert pair, the http→https redirect so plain visits are one hop from safety, and the X-Forwarded-* lines from the last block now with \`$scheme\` (so the app sees https, not a hard-coded value). TWO CONNECTIONS to the topic chain: HSTS — helmet already sends Strict-Transport-Security (the security topic pinned it in dev, where browsers correctly ignore it over plain http); behind real TLS it becomes LOAD-BEARING, and the sketch adds nginx's own always-on copy for non-HTML responses Express never touches. And upgrade-insecure-requests in the CSP — inert in dev, now actively forcing https for every subresource. THE INTERIOR of the stack stays plain http: nginx→server traffic rides the private compose network; encrypting interior hops is a real pattern (mTLS between services) but belongs to the multi-service security conversation, not the front door.`,
         },
         {
           kind: 'code',
@@ -478,7 +524,7 @@ server {
         {
           kind: 'text',
           id: 'deploy-process:graceful-shutdown',
-          body: `ZERO-DOWNTIME STARTS AT SHUTDOWN. The primitive is not clever infrastructure — it is the ability to STOP TAKING NEW CONNECTIONS while FINISHING IN-FLIGHT WORK, then exit. That is exactly what server.ts does on SIGTERM (quoted below, abridged to its spine): drain gRPC first, then the optional mongo and BOTH redis connections, close the chat hub (open websockets would otherwise hold server.close() hostage), and only then server.close() — with a 10-second force-exit net so a stuck connection cannot wedge the shutdown forever (the net is what TimeoutStopSec/kill_timeout above must out-wait). Every supervisor in the catalog sends SIGTERM first precisely because of code like this; SIGKILL is what arrives when the timeout expires anyway. THE DEPLOY CHOREOGRAPHY this enables: with ≥2 replicas behind the proxy, a rolling restart removes one replica from rotation, sends it SIGTERM, WAITS for its drain (in-flight requests land, responses flush), starts the replacement, waits for its READINESS gate — and here the health topic chain pays off: GET /api/health is the liveness signal, the observability topic's /api/demo/obs/health is the readiness-shaped one (sqlite probed for real, optional services reported honestly) — and only then moves to the next replica. One replica draining at a time means the capacity dip is 1/N, never N. Compose itself does a mini version of this on \`up -d\` after a rebuild: recreate the changed container (stop → SIGTERM → drain → remove → start new). It is coarse — the whole service blinks, and the only readiness gate is the prod file's health-aware depends_on (the client waits for /api/health before starting) — which is the honest line between compose and the orchestrators: same SIGNALS, finer control.`,
+          body: `ZERO-DOWNTIME STARTS AT SHUTDOWN. The primitive is not clever infrastructure — it is the ability to STOP TAKING NEW CONNECTIONS while FINISHING IN-FLIGHT WORK, then exit. That is exactly what server.ts does on SIGTERM (quoted below, abridged to its spine): drain gRPC first, then the optional mongo and BOTH redis connections, close the chat hub (open websockets would otherwise hold server.close() hostage), and only then server.close() — with a 10-second force-exit net so a stuck connection cannot wedge the shutdown forever (the net is what TimeoutStopSec/kill_timeout above must out-wait). Every supervisor in the catalog sends SIGTERM first precisely because of code like this; SIGKILL is what arrives when the timeout expires anyway. THE DEPLOY CHOREOGRAPHY this enables: with ≥2 replicas behind the proxy, a rolling restart removes one replica from rotation, sends it SIGTERM, WAITS for its drain (in-flight requests land, responses flush), starts the replacement, waits for its READINESS gate — and here the health topic chain pays off: GET /api/health is the liveness signal, the observability topic's /api/demo/obs/health is the readiness-shaped one (sqlite probed for real, optional services reported honestly) — and only then moves to the next replica. One replica draining at a time means the capacity dip is 1/N, never N. Compose itself does a mini version of this on \`up -d\` after a rebuild: recreate the changed container (stop → SIGTERM → drain → remove → start new). It is coarse — the whole service blinks, and the only in-file readiness gate is the health-aware depends_on (the client waits for /api/health before starting). The shipped deploy PAYS to erase that blink: blue/green keeps the old color serving while the new one boots, and only a one-line upstream file + a graceful Caddy reload moves traffic — the deploy section ahead walks it. What compose still cannot do is the orchestrator's granularity — rolling ONE replica at a time with per-pod readiness — which is the honest line between them: same SIGNALS, finer control.`,
         },
         {
           kind: 'code',
@@ -518,19 +564,19 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));`,
       id: 'deploy-cicd',
       title: 'CI/CD',
       lead:
-        'The pipeline this repo RUNS: both packages, tests AND build, on every push and pull request. The workflow file below is real — the image/push stage is the declared growth path.',
+        'The pipeline this repo RUNS: both packages, tests AND build, the production images booted behind a real browser, and an attested publish to GHCR on master. The workflow file below is real.',
       blocks: [
         {
           kind: 'text',
           id: 'deploy-cicd:pipeline',
-          body: `THE PIPELINE, STAGE BY STAGE — what the real .github/workflows/ci.yml runs on every push to main and every pull request. (0) SETUP — checkout, Node 22, and the npm cache keyed on each package's lockfile (the cache is what keeps \`npm ci\` under a minute instead of under five). (1) LINT — HONEST GAP: neither package has a linter installed (no eslint, no config; the workflow's own header says "nothing faked below"), so the lint stage does not exist yet and this topic will not pretend otherwise; the first line of the pipeline's future is \`npx eslint .\` after the dependency lands. (2) TEST — \`npm run test:coverage\` on the server and plain \`npm test\` on the client: the server's Vitest/Supertest suite runs under V8 coverage with ENFORCED THRESHOLDS from vitest.config.ts (a measured floor for lines/branches/functions/statements — slip under the percentages and the build goes red, so coverage gaps become visible instead of invisible), the client's jsdom suite runs plain, with zero service containers — the workflow's header states the trick this repo earns for free: vitest runs with NODE_ENV unset, which forces the test mapping to sqlite ':memory:', and the live mongo/redis worlds are skipIf-gated, so the default CI world is hermetic by construction. (3) BUILD — both \`npm run build\`s, because a pipeline that never runs the build ships the first broken build to Docker (the server's tsc and the client's tsc -b + vite build are both compile gates). (4) IMAGE + PUSH ON TAG — the GROWTH PATH, not yet shipped: build the images from the SAME Dockerfile.prod files the compose stack uses (one artifact definition, everywhere), run the build on every PR to prove it CAN build, but PUSH only on \`v*\` tags with the semver and latest — \`needs: [server, client]\` so no image whose tests failed can ever exist (an image in a registry is a DEPLOYABLE UNIT, and a deployable unit that skipped tests is a loaded gun). Alongside the package jobs a THIRD job, \`secrets\`, runs gitleaks over the FULL history on every push and PR — the guard that a REAL credential can never silently enter Git; this repo whitelists three placeholder-only .env teaching files, which gitleaks' entropy rules won't flag, so the gate is green by honesty, not exemption. THE SEMVER DISCIPLINE for tags: vX.Y.Z where X breaks API, Y adds, Z fixes — and tags are IMMUTABLE (never move a pushed tag; deploy rolls FORWARD by tagging the fix).`,
+          body: `THE PIPELINE, STAGE BY STAGE — what the real .github/workflows/ci.yml runs on every push to master and every pull request. (0) SETUP — checkout, Node 22, and the npm cache keyed on each package's lockfile (the cache is what keeps \`npm ci\` under a minute instead of under five); every \`uses:\` step is pinned to a FULL 40-CHAR COMMIT SHA with a \`# vX.Y.Z\` comment, because a mutable tag can be repointed by anyone who owns the tag — the pin is the lock, the comment is the version, and Dependabot (.github/dependabot.yml) rewrites both weekly. (1) LINT — HONEST GAP: neither package has a linter installed (no eslint, no config), so the lint stage does not exist yet and this topic will not pretend otherwise; the first line of the pipeline's future is \`npx eslint .\` after the dependency lands. (2) TEST — \`npm run test:coverage\` on BOTH packages now: the server's Vitest/Supertest suite runs under V8 coverage with ENFORCED THRESHOLDS from vitest.config.ts (a measured floor for lines/branches/functions/statements — slip under the percentages and the build goes red, so coverage gaps become visible instead of invisible), while the client's jsdom suite runs coverage REPORT-ONLY — no thresholds, by design: the server carries the enforced floor, the client's numbers are attached to the run as 14-day artifacts next to the server's, visible without re-running anything. Zero service containers either way — vitest runs with NODE_ENV unset, which forces the test mapping to sqlite ':memory:', and the live mongo/redis worlds are skipIf-gated, so the default CI world is hermetic by construction. (3) BUILD — both \`npm run build\`s, because a pipeline that never runs the build ships the first broken build to Docker (the server's tsc and the client's tsc -b + vite build are both compile gates). (4) IMAGE SMOKE + BROWSER GATE — the \`e2e\` job, \`needs: [server, client, secrets]\`: build BOTH images from the SAME Dockerfile.prod files the compose stack uses (one artifact definition, everywhere) as local \`:ci\`-tagged images — no registry involved yet — then boot them with the PLATFORM compose file, the PROD app compose, and a CI OVERRIDE (docker-compose.ci.yml) that pins the \`:ci\` tags and fixed container names, drops the caddy TLS edge via an inactive profile (its 80/443 publishes and ACME behavior must never run on a runner), and publishes nginx on the loopback only — after a prepare step creates the external edg_frontend/edg_backend networks and the five external volumes idempotently and materializes server/.env.production from the committed template; \`up -d --wait\` blocks on the healthchecks, a curl proves /api/health THROUGH nginx, and the host-side Playwright suite drives the real UI against the booted stack (\`E2E_BASE_URL=http://127.0.0.1:8080\`) — every PR now proves the images not only BUILD but SERVE. (5) PUSH TO GHCR — \`build-push\`, \`needs: [e2e]\` so it transitively waits on everything: on master only, both images are pushed multi-arch (amd64+arm64) as \`sha-<7>\` AND \`master\` tags with PROVENANCE + SBOM ATTESTATIONS attached (OCI artifacts in GHCR answering WHERE it was built and WHAT is inside — the supply-chain receipts), and the gha build cache shares scopes with the e2e job so the pushed image reuses the smoke-tested layers (an image in a registry is a DEPLOYABLE UNIT, and a deployable unit that skipped tests is a loaded gun — the needs chain is the safety). Alongside the package jobs a \`secrets\` job runs gitleaks over the FULL history on every push and PR — the guard that a REAL credential can never silently enter Git; this repo whitelists three placeholder-only .env teaching files, which gitleaks' entropy rules won't flag, so the gate is green by honesty, not exemption. THE SEMVER DISCIPLINE for release tags: vX.Y.Z where X breaks API, Y adds, Z fixes — and tags are IMMUTABLE (never move a pushed tag; deploy rolls FORWARD by tagging the fix).`,
         },
         {
           kind: 'code',
           id: 'deploy-cicd:workflow-quote',
           language: 'yaml',
           caption:
-            'Verbatim — the real .github/workflows/ci.yml this repo runs on every push and pull request (both packages, tests AND build, plus the gitleaks secrets gate — the devcontainer\'s definition of done, on GitHub\'s runners)',
+            'Verbatim — the real .github/workflows/ci.yml this repo runs on every push and pull request (the e2e image gate + the attested GHCR publish; every uses: pinned to a commit SHA — the version comments are what Dependabot rewrites)',
           source: '.github/workflows/ci.yml',
           code: `name: CI
 
@@ -540,55 +586,83 @@ on:
   pull_request:
 
 jobs:
-  server:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: server/package-lock.json
-      - run: npm ci
-      - run: npm run test:coverage
-      - run: npm run build
+  # … server, client (both npm run test:coverage + build, coverage artifacts
+  # uploaded), and the gitleaks secrets job …
 
-  client:
+  e2e:
+    name: Image smoke + browser gate
+    needs: [server, client, secrets]
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: client
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-  # Secret scanning, parallel to the package jobs: the guard that a real
-  # credential can never silently enter Git. This repo whitelists three
-  # placeholder-only .env teaching files (see .gitignore), which gitleaks'
-  # entropy rules won't flag — the gate is green by honesty, not exemption.
-  secrets:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build server image (local, amd64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          # Full history — a leak in an old commit is still a leak.
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v3`,
+          context: .
+          file: .docker/server/Dockerfile.prod
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ghcr.io/mayank-uk/express-guide-server:ci
+          cache-from: type=gha,scope=server
+          # Fork PRs run with a read-only token — never attempt cache
+          # writes there; the expression yields '' (cache write off).
+          cache-to: \${{ github.event_name == 'push' && 'type=gha,mode=max,scope=server' || '' }}
+
+      # … the client image twin (scope=client), then the prepare step
+      # (external networks + volumes, env file from the template) and the
+      # compose boot:
+      # docker compose -f .docker/docker-compose-platform.yml
+      #   -f .docker/docker-compose-prod.yml
+      #   -f .docker/docker-compose.ci.yml up -d --wait --wait-timeout 300
+      # … a curl probe of /api/health through nginx on 127.0.0.1:8080 …
+
+      - name: Run browser E2E against the booted stack
+        working-directory: e2e
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8080
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm test
+
+      - name: Tear down the CI stack
+        if: always()
+        run: >
+          docker compose -f .docker/docker-compose-platform.yml
+          -f .docker/docker-compose-prod.yml
+          -f .docker/docker-compose.ci.yml down -v --remove-orphans
+
+  build-push:
+    needs: [e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # … QEMU + buildx, GHCR login with the ephemeral GITHUB_TOKEN,
+    # sha-<7> + master tags per matrix leg …
+    steps:
+      # …
+      - name: Build and push image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # Supply-chain attestations: provenance (how/where the image
+          # was built) + SBOM (what is inside it).
+          provenance: true
+          sbom: true
+          tags: |
+            \${{ matrix.image }}:\${{ steps.image_tag.outputs.tag }}
+            \${{ matrix.image }}:master
+          cache-from: type=gha,scope=\${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=\${{ matrix.service }}`,
         },
         {
           kind: 'text',
           id: 'deploy-cicd:deploy-hook',
-          body: `FROM PUSHED IMAGE TO RUNNING STACK — the D in CI/CD, honestly sized for a compose deployment. The deploy hook is whatever tells the host "pull and recreate": the smallest honest version is SSH into the host and run \`docker compose -f .docker/docker-compose-prod.yml pull && docker compose -f .docker/docker-compose-prod.yml up -d\` — pull swaps the image tag, up recreates ONLY the changed containers, and the SIGTERM drain from the last section carries in-flight requests across the blink. (The image: line in the prod compose names the built image locally; a registry deployment replaces build: with image: ghcr.io/…/server:vX.Y.Z — same file, different source of truth, and the tag pin in the file becomes the deploy's audit trail.) THE GROWTH PATH, one line each: pull-based agents (watchtower) trade control for zero SSH; purpose-built CD (a GitHub Actions deploy job with environment approvals) adds gates; and Kubernetes flips the model — the cluster PULLS toward declared state and you only change the tag in a manifest. WHAT CI MUST NEVER SEE: secret VALUES. The shipped workflow uses NO stored credentials at all (checkout, run steps, and the gitleaks scanner — which needs no token on a public repo); every future secret (a registry token, a deploy key) enters as \${{ secrets.NAME }}, stored in the repo's encrypted settings, surfacing only as an environment variable at the exact step that needs it. The next section closes the loop on where those values live at RUNTIME.`,
+          body: `FROM PUSHED IMAGE TO RUNNING STACK — the D in CI/CD, and this repo now SHIPS the grown-up version: zero-downtime blue/green over a persistent platform. The real .github/workflows/deploy-production.yml (triggered by green CI on master, or a manual dispatch of a sha-* tag) runs the whole state machine on the VM: the PLATFORM (caddy + redis + mongo, project edg_platform) is booted once and never touched by releases; each release boots server + client under the INACTIVE color's project (edg_blue / edg_green) — images pulled fresh from GHCR, gated on the file's own healthchecks — and is then PROBED PRIVATELY (a busybox wget from inside the color's app_internal network) before anything public changes. The moment of truth is deliberately tiny: rewrite the platform's upstream.caddy (one line — \`reverse_proxy edg_client_<color>:80\`) and \`docker exec edg_caddy caddy reload\` — a GRACEFUL reload, no TLS blip, in-flight requests drain; the old color keeps running until the public health gate passes, and the SIGTERM drain from the last section covers its retirement. A failure BEFORE the flip tears down the failed color and the live one never noticed; a failure AFTER flips back to the still-running previous color — instant rollback by construction. The PRE-SPLIT honest answer is still worth knowing, because not every side project earns blue/green: SSH into the host and run \`docker compose pull && docker compose up -d\` — pull swaps the image tag, up recreates ONLY the changed containers, and the drain carries in-flight requests across the blink. THE GROWTH PATH, one line each: pull-based agents (watchtower) trade control for zero SSH; purpose-built CD (a GitHub Actions deploy job with environment approvals) adds gates — the shipped deploy already runs against a GitHub \`production\` ENVIRONMENT holding its secrets; and Kubernetes flips the model — the cluster PULLS toward declared state and you only change the tag in a manifest. WHAT CI MUST NEVER SEE: secret VALUES. The CI workflow stores NO secrets at all — its one credential is the ephemeral \`GITHUB_TOKEN\` GitHub mints per job (it logs into GHCR for the image push and feeds the gitleaks scanner), which is job-scoped and revoked when the run ends — nothing to rotate, nothing to leak from a vault; every STORED secret (the VM's SSH key and registry pull token, the PROD_ENV_B64 env file payload) enters as \${{ secrets.NAME }}, stored in the repo's encrypted settings, surfacing only as an environment variable at the exact step that needs it. The next section closes the loop on where those values live at RUNTIME.`,
         },
       ],
     },
@@ -601,7 +675,7 @@ jobs:
         {
           kind: 'text',
           id: 'deploy-parity:layers',
-          body: `ONE IMAGE, N ENVIRONMENTS — the payoff of config-via-env: staging and production run the SAME artifacts, differing only in what the orchestrator injects. This repo's precedence chain, top wins: (1) compose \`environment:\` — both compose files use exactly this to REDIRECT service URLs (\`MONGO_URI=mongodb://mongo:27017/…\`) because inside the compose network the databases live at service names, not 127.0.0.1 as the env files claim; (2) compose \`env_file:\` — the per-environment file (\`env_file: ./../server/.env.production\` in prod); (3) the IMAGE's ENV (\`ENV NODE_ENV=production\` — the one value that is genuinely the image's business); (4) dotenv — last resort, and ONLY in development, because a file inside the image would make environments distinguishable by their ARTIFACT, which is the whole anti-pattern (and the reason .dockerignore excludes \`.env*\`: an env file baked into a layer ships its values to every registry the image touches). The layers are also a debugging map: when prod behaves differently, walk the chain — environment: beats env_file:, the real environment beats dotenv, and a value you THOUGHT was set may be being overridden two layers up. SECRETS AT DEPLOY TIME follow the same shape with one more rule: the compose env_file on the HOST holds real values (git-ignored, chmod 600), CI holds its copies as GitHub secrets materialized into env vars only in the steps that need them, and the OBSERVABILITY rule from the environments topic still governs — the app's config inspector masks secret-shaped names to "set (hidden)", and no log line ever prints a value. ONE KNOWN GAP, stated rather than fixed: the repo's root .gitignore does not yet list \`.env*\` (noted in the security topic when the placeholder-only secrets were documented) — placeholder values today, but the gitignore hardening is deliberately OUT of this topic's scope and stays a declared follow-up until the repo is git-initialized with real credentials in play.`,
+          body: `ONE IMAGE, N ENVIRONMENTS — the payoff of config-via-env: staging and production run the SAME artifacts, differing only in what the orchestrator injects. This repo's precedence chain, top wins: (1) compose \`environment:\` — both compose files use exactly this to REDIRECT service URLs (\`MONGO_URI=mongodb://mongo:27017/…\`) because inside the compose network the databases live at service names, not 127.0.0.1 as the env files claim; (2) compose \`env_file:\` — the per-environment file (\`env_file: ./../server/.env.production\` in prod); (3) the IMAGE's ENV (\`ENV NODE_ENV=production\` — the one value that is genuinely the image's business); (4) dotenv — last resort, and ONLY in development, because a file inside the image would make environments distinguishable by their ARTIFACT, which is the whole anti-pattern (and the reason .dockerignore excludes \`.env*\`: an env file baked into a layer ships its values to every registry the image touches). The layers are also a debugging map: when prod behaves differently, walk the chain — environment: beats env_file:, the real environment beats dotenv, and a value you THOUGHT was set may be being overridden two layers up. SECRETS AT DEPLOY TIME follow the same shape with one more rule: git carries only the placeholder TEMPLATE (.env.production.example — committed, teachable, no secrets); the real file is MATERIALIZED at deploy time on the runner (base64-decoded from the PROD_ENV_B64 secret stored in the GitHub production environment), scp'd into the VM's release directory with chmod 600, and never echoed or logged, while CI's other credentials surface only as environment variables in the exact steps that need them — and the OBSERVABILITY rule from the environments topic still governs — the app's config inspector masks secret-shaped names to "set (hidden)", and no log line ever prints a value. ONE GAP CLOSED, and the gitignore grew teeth to close it: the repo's root .gitignore now lists \`.env*\` (negating only the placeholder-only teaching files — dev, staging, and the production template), so the day real credentials enter .env.production the file is invisible to git by default rather than one \`git add -f\` away from being permanent (git remembers; "deleting" it later does not unfork the clones — which is exactly why production's real file never enters git at all).`,
         },
         {
           kind: 'code',
@@ -619,8 +693,8 @@ jobs:
           id: 'deploy-parity:env-file-quote',
           language: 'yaml',
           caption:
-            'Verbatim — the file the prod compose env_file injects (server/.env.production), all of it',
-          source: 'server/.env.production',
+            'Verbatim — the committed template the prod compose env_file expects (server/.env.production.example); the real file is materialized on the VM from the PROD_ENV_B64 secret at deploy time',
+          source: 'server/.env.production.example',
           code: `PORT=4000
 NODE_ENV=production
 LOG_LEVEL=info
@@ -890,32 +964,36 @@ scp .docker/docker-compose-prod.yml deploy@guide.example.test:~/`,
         {
           kind: 'text',
           id: 'deploy-see-it-live:what-you-see',
-          body: `THE STACK EXPLORER (in the Compose section above) is the "you are running inside the deployed thing" moment. GET /api/demo/deploy/stack answers with the LIVE process facts — the pid, the Node version, the environment, the uptime, the RSS — of the very server rendering this page, plus the browser origin you reached it through (Vite's dev proxy on :5173, Caddy's HTTPS front door on :443, or a direct :4000 hit — each tells a different deployment story), and the services DECLARED by this repo's two compose files, parsed live off disk with a tolerant two-space-indent heuristic. The panel puts DECLARED beside LIVE: the declared stack is what the orchestrator was told; the live facts are what actually runs — deployment is the discipline of keeping those two columns identical. Watch the forwardedProto line in particular: through the shipped prod proxy it reads null, because the shipped nginx conf does not set X-Forwarded-Proto — the reverse-proxy section's gap, visible as data. Or drive it from a terminal — including the full prod boot this topic was proven with:`,
+          body: `THE STACK EXPLORER (in the Compose section above) is the "you are running inside the deployed thing" moment. GET /api/demo/deploy/stack answers with the LIVE process facts — the pid, the Node version, the environment, the uptime, the RSS — of the very server rendering this page, plus the browser origin you reached it through (Vite's dev proxy on :5173, Caddy's HTTPS front door on :443, or a direct :4000 hit — each tells a different deployment story), and the services DECLARED by this repo's dev and prod-app compose files, parsed live off disk with a tolerant two-space-indent heuristic. The panel puts DECLARED beside LIVE: the declared stack is what the orchestrator was told; the live facts are what actually runs — deployment is the discipline of keeping those two columns identical. Watch the forwardedProto line in particular: through the shipped prod proxy it reads null, because the shipped nginx conf does not set X-Forwarded-Proto — the reverse-proxy section's gap, visible as data. Or drive it from a terminal — including the full prod boot this topic was proven with:`,
         },
         {
           kind: 'code',
           id: 'deploy-see-it-live:curl',
           language: 'bash',
-          caption: 'The stack manifest over curl, and the full prod boot this topic was proven with',
+          caption: 'The stack manifest over curl, and the full prod-shape boot this topic was proven with',
           code: `# the declared stack vs the live process, as data:
 curl -s localhost:4000/api/demo/deploy/stack | head -40
 
-# the full prod stack — from nothing to healthy:
-docker compose -f .docker/docker-compose-prod.yml build
-docker compose -f .docker/docker-compose-prod.yml up -d
-docker compose -f .docker/docker-compose-prod.yml ps
+# the full prod SHAPE — persistent platform first, then a colored app stack
+# (the deploy's own ordering: platform healthy before any app boots):
+docker compose -f .docker/docker-compose-platform.yml -p edg_platform up -d --wait
+COLOR=blue IMAGE_TAG=ci docker compose -p edg_blue \\
+  -f .docker/docker-compose-prod.yml up -d --no-build --wait
+docker compose -f .docker/docker-compose-platform.yml -p edg_platform ps
 
 # through the stack — Caddy's front door when the host has the DNS record
-# and open 80/443; on a purely local run, uncomment the 8080 hatch in the
-# compose file and stay on localhost:
+# and open 80/443; on a purely local run, boot with the CI override and its
+# 127.0.0.1:8080 publish instead:
 curl -s https://expressdevelopersguide.duckdns.org/api/health          # liveness, THROUGH the proxies
 curl -s https://expressdevelopersguide.duckdns.org/api/posts | head -5 # sqlite + the whole stack, end to end
 curl -s -o /dev/null -w '%{http_code}\\n' https://expressdevelopersguide.duckdns.org/   # the client shell itself
 
-docker compose -f .docker/docker-compose-prod.yml logs server | grep listening
+docker logs edg_server_blue 2>&1 | grep listening
 
-# and, when you are done — volumes persist on purpose (named volumes outlive down):
-docker compose -f .docker/docker-compose-prod.yml down`,
+# and, when you are done — NEVER -v: the external volumes (real prod
+# naming) outlive down on purpose; take both stacks down:
+docker compose -p edg_blue -f .docker/docker-compose-prod.yml down --remove-orphans
+docker compose -p edg_platform -f .docker/docker-compose-platform.yml down --remove-orphans`,
         },
       ],
     },

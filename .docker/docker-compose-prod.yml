@@ -1,30 +1,41 @@
-# Explicit compose project name: without it, compose derives "docker" from
-# this file's .docker/ parent dir, which shows as a bare "docker" group in
-# Docker Desktop. Distinct from the dev stack's name so both stacks can run
-# at once without sharing networks/volumes (mirrors the *_prod container
-# naming scheme).
-name: express_developers_guide_prod
-
+# PER-RELEASE APP STACK — booted per deploy under the project of one color:
+#   COLOR=blue  IMAGE_TAG=sha-abc1234 docker compose -p edg_blue  -f <this file> up -d --wait
+#   COLOR=green IMAGE_TAG=sha-def5678 docker compose -p edg_green -f <this file> up -d --wait
+# The deploy script ALWAYS exports COLOR deliberately; the ${COLOR:-blue}
+# default below only exists so a bare local `up` boots something (blue).
+# There is deliberately NO top-level name: the -p flag names the project,
+# and the two colors must never share one.
+#
+# The persistent platform (caddy + redis + mongo, project edg_platform) lives
+# in docker-compose-platform.yml and is booted BEFORE any app stack: the
+# mongo client never reopens a failed first connect, so the boot race is won
+# by deploy ORDERING (platform `up -d --wait` fully healthy first) —
+# depends_on cannot cross compose files. The app_internal network is
+# project-scoped ON PURPOSE: each color's `server` service-name DNS resolves
+# only within its own color, so nginx's baked `proxy_pass http://server:4000`
+# always reaches the SAME color's API, never the other release's.
 services:
   server:
     image: "ghcr.io/mayank-uk/express-guide-server:${IMAGE_TAG:?IMAGE_TAG is required}"
-    container_name: express_developers_guide_server_prod
+    container_name: edg_server_${COLOR:-blue}
     restart: unless-stopped
     # No published ports — the API stays internal; nginx's /api proxy is the
     # only caller. Debug hatch: - "127.0.0.1:4000:4000"
     env_file:
       - ./../server/.env.production
     environment:
-      # Inside compose the optional services are reachable by service name,
-      # not localhost — and environment: beats env_file:, so these win over
-      # the .env.production values (MONGO_URI is unset there on purpose;
-      # prod ships the full demo set, both services wired).
+      # The platform datastores are reachable by their network ALIASES on
+      # the shared edg_backend network — and environment: beats env_file:,
+      # so these win over the .env.production values (MONGO_URI is unset
+      # there on purpose; prod ships the full demo set, both services
+      # wired).
       - REDIS_URL=redis://redis:6379
       - MONGO_URI=mongodb://mongo:27017/express_guide_prod
     volumes:
       # SQLITE_PATH=data/guide.db is relative to the image WORKDIR /app, so
       # /app/data is where the sqlite file lives; the named volume keeps the
-      # database across container recreation.
+      # database across container recreation — SHARED between colors (the
+      # external legacy name), so a flip inherits the live data.
       - server_data:/app/data
     healthcheck:
       # 127.0.0.1, not localhost: busybox wget resolves localhost to ::1
@@ -35,30 +46,23 @@ services:
       retries: 3
       start_period: 15s
     networks:
-      - frontend
-      - backend
-    depends_on:
-      # Prod SHIPS the optional services, so the server waits for them: the
-      # mongo client never reopens after a failed connect, and losing the
-      # boot race would mark a demo off for the process lifetime. Dev stays
-      # dependency-free — there the services are optional by design.
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
+      - app_internal
+      - edg_backend
 
   client:
     image: "ghcr.io/mayank-uk/express-guide-client:${IMAGE_TAG:?IMAGE_TAG is required}"
-    container_name: express_developers_guide_client_prod
+    container_name: edg_client_${COLOR:-blue}
     restart: unless-stopped
-    # No published ports — Caddy is the front door now (TLS on :443); nginx
-    # is the internal app server behind it. Debug hatch (loopback, non-TLS):
-    # - "127.0.0.1:8080:80"
+    # No published ports — Caddy is the front door (TLS on :443) and reaches
+    # this container BY NAME (edg_client_<color>) on the shared edg_frontend
+    # network; nginx is the internal app server behind it. Debug hatch
+    # (loopback, non-TLS): - "127.0.0.1:8080:80"
     networks:
-      - frontend
+      - app_internal
+      - edg_frontend
     depends_on:
-      # Long form: the app tier waits for its API — and Caddy chains the
-      # same gate one hop higher.
+      # Long form: the app tier waits for its API — same color, same
+      # project, so the gate still works per release.
       server:
         condition: service_healthy
     healthcheck:
@@ -69,74 +73,24 @@ services:
       retries: 3
       start_period: 5s
 
-  redis:
-    image: redis:7-alpine
-    container_name: express_developers_guide_redis_prod
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
-    networks:
-      - backend
-
-  # Full demo parity: prod ships mongo too, so every demo is live. Like
-  # redis, deliberately NO published ports — prod keeps the datastores
-  # private to the backend network (dev publishes 6379/27017 for host-run
-  # tooling; prod has no host-run tooling).
-  mongo:
-    image: mongo:7
-    container_name: express_developers_guide_mongo_prod
-    restart: unless-stopped
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - backend
-
-  # TLS front door: terminates HTTPS for the DuckDNS hostname (automatic
-  # Let's Encrypt, HTTP/3) and proxies to the client container inside the
-  # compose network — the .docker/Caddyfile next to this file drives it.
-  caddy:
-    image: caddy:2-alpine
-    container_name: express_developers_guide_caddy_prod
-    restart: unless-stopped
-    ports:
-      # Caddy is the ONLY publicly published service now: 80 serves the
-      # ACME HTTP-01 challenge + redirect, 443 is HTTPS (tcp + udp = HTTP/3).
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Certificates persist across container recreation — without /data
-      # every recreate re-provisions and burns Let's Encrypt rate limits.
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - frontend
-    depends_on:
-      # Health-gated like every prod edge; the plain short form would race
-      # a still-starting nginx.
-      client:
-        condition: service_healthy
-
 networks:
-  frontend:
-  backend:
+  # Plain project-scoped network: edg_blue_app_internal / edg_green_app_internal.
+  # THIS is the isolation unit — nginx's `proxy_pass http://server:4000` and
+  # this file's depends_on resolve `server` inside the color's own network.
+  app_internal: {}
+  # Shared with the platform stack (external, created by the deploy): caddy
+  # reaches edg_client_<color> here.
+  edg_frontend:
+    name: edg_frontend
+    external: true
+  # Shared with the platform stack: redis + mongo live here by alias.
+  edg_backend:
+    name: edg_backend
+    external: true
 
 volumes:
-  redis_data:
+  # LEGACY name from the single-stack era — external (created by the deploy)
+  # and shared across colors so sqlite survives every flip.
   server_data:
-  mongo_data:
-  caddy_data:
-  caddy_config:
+    name: express_developers_guide_prod_server_data
+    external: true

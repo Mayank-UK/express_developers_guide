@@ -1,0 +1,113 @@
+# PERSISTENT PLATFORM STACK — booted once and untouched by releases.
+#
+# Project edg_platform owns everything that OUTLIVES a deployment: the TLS
+# edge (caddy) and both datastores (redis, mongo). Releases never recreate
+# these containers; only the colored app stacks (docker-compose-prod.yml,
+# projects edg_blue / edg_green) come and go per deploy. The caddy service
+# deliberately does NOT depend_on the client: the client lives in another
+# compose project, and caddy resolves its upstream per-request — before the
+# first app boot it answers 502, which is acceptable and documented (the
+# deploy flips upstream.caddy to the live color before the public health
+# gate).
+#
+# The datastore boot-race guarantee (the mongo client never reopens a failed
+# first connect — LOAD-BEARING, see the app file) is enforced by DEPLOY
+# ORDERING here: `up -d --wait` must report redis and mongo healthy BEFORE
+# any app stack starts; depends_on cannot cross compose files.
+#
+# Networks and volumes are EXTERNAL on purpose: the networks are shared with
+# the per-release app stacks, and the volumes keep their LEGACY names from
+# the single-stack era (express_developers_guide_prod_*) so existing VM data
+# is adopted, not lost — the deploy creates them idempotently before the
+# first boot.
+name: edg_platform
+
+services:
+  # TLS front door: terminates HTTPS for the DuckDNS hostname (automatic
+  # Let's Encrypt, HTTP/3) and proxies to whichever colored client the
+  # upstream.caddy file points at. Both files are bind-mounted read-only from
+  # the VM's $ROOT/platform/ directory; a release flips ONLY upstream.caddy
+  # (one line: reverse_proxy edg_client_<color>:80) followed by a graceful
+  # `caddy reload` — no TLS blip, in-flight requests drain.
+  caddy:
+    image: caddy:2-alpine
+    container_name: edg_caddy
+    restart: unless-stopped
+    ports:
+      # Caddy is the ONLY publicly published service: 80 serves the ACME
+      # HTTP-01 challenge + redirect, 443 is HTTPS (tcp + udp = HTTP/3).
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./upstream.caddy:/etc/caddy/upstream.caddy:ro
+      # Certificates persist across container recreation — without /data
+      # every recreate re-provisions and burns Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edg_frontend
+
+  redis:
+    image: redis:7-alpine
+    container_name: edg_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      edg_backend:
+        # The alias keeps the app stacks' REDIS_URL=redis://redis:6379
+        # resolving without knowing this stack's service names.
+        aliases:
+          - redis
+
+  # Full demo parity: prod ships mongo too, so every demo is live. Like
+  # redis, deliberately NO published ports — prod keeps the datastores
+  # private to the backend network.
+  mongo:
+    image: mongo:7
+    container_name: edg_mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      edg_backend:
+        aliases:
+          - mongo
+
+networks:
+  edg_frontend:
+    name: edg_frontend
+    external: true
+  edg_backend:
+    name: edg_backend
+    external: true
+
+volumes:
+  # LEGACY names from the single-stack era — external so this stack adopts
+  # the existing VM data instead of provisioning fresh volumes.
+  redis_data:
+    name: express_developers_guide_prod_redis_data
+    external: true
+  mongo_data:
+    name: express_developers_guide_prod_mongo_data
+    external: true
+  caddy_data:
+    name: express_developers_guide_prod_caddy_data
+    external: true
+  caddy_config:
+    name: express_developers_guide_prod_caddy_config
+    external: true

@@ -1,4 +1,5 @@
-# CI: test the packages, scan for secrets, and publish production images.
+# CI: test the packages, scan for secrets, smoke the production images with a
+# real browser, and publish attested images from master.
 name: CI
 
 on:
@@ -16,8 +17,8 @@ jobs:
             run:
                 working-directory: server
         steps:
-            - uses: actions/checkout@v6
-            - uses: actions/setup-node@v6
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+            - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
                   node-version: 22
                   cache: npm
@@ -25,6 +26,13 @@ jobs:
             - run: npm ci
             - run: npm run test:coverage
             - run: npm run build
+            - name: Upload server coverage report
+              if: always()
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+              with:
+                  name: coverage-server
+                  path: server/coverage
+                  retention-days: 14
 
     client:
         runs-on: ubuntu-latest
@@ -32,29 +40,149 @@ jobs:
             run:
                 working-directory: client
         steps:
-            - uses: actions/checkout@v6
-            - uses: actions/setup-node@v6
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+            - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
                   node-version: 22
                   cache: npm
                   cache-dependency-path: client/package-lock.json
             - run: npm ci
-            - run: npm test
+            # Report-only: no thresholds on the client by design — the server
+            # carries the enforced floor.
+            - run: npm run test:coverage
             - run: npm run build
+            - name: Upload client coverage report
+              if: always()
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+              with:
+                  name: coverage-client
+                  path: client/coverage
+                  retention-days: 14
 
     secrets:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
               with:
                   fetch-depth: 0
-            - uses: gitleaks/gitleaks-action@v3
+            - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+    # The image smoke + browser gate: build BOTH production images locally,
+    # boot them with the platform + prod compose files plus the CI override
+    # (caddy dropped, nginx published on the loopback), and drive the real
+    # UI with Playwright.
+    e2e:
+        name: Image smoke + browser gate
+        needs: [server, client, secrets]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+            - name: Build server image (local, amd64)
+              uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+              with:
+                  context: .
+                  file: .docker/server/Dockerfile.prod
+                  platforms: linux/amd64
+                  push: false
+                  load: true
+                  tags: ghcr.io/mayank-uk/express-guide-server:ci
+                  cache-from: type=gha,scope=server
+                  # Fork PRs run with a read-only token — never attempt cache
+                  # writes there; the expression yields '' (cache write off).
+                  cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=server' || '' }}
+
+            - name: Build client image (local, amd64)
+              uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+              with:
+                  context: .
+                  file: .docker/client/Dockerfile.prod
+                  platforms: linux/amd64
+                  push: false
+                  load: true
+                  tags: ghcr.io/mayank-uk/express-guide-client:ci
+                  cache-from: type=gha,scope=client
+                  cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=client' || '' }}
+
+            - name: Prepare external compose resources and the env file
+              run: |
+                  set -euo pipefail
+                  # The platform/app stacks reference these as external:
+                  # compose looks them up, never creates them. Idempotent —
+                  # safe on reruns; a fresh runner just makes fresh ones.
+                  docker network create edg_frontend 2>/dev/null || true
+                  docker network create edg_backend 2>/dev/null || true
+                  for volume in \
+                    express_developers_guide_prod_redis_data \
+                    express_developers_guide_prod_mongo_data \
+                    express_developers_guide_prod_caddy_data \
+                    express_developers_guide_prod_caddy_config \
+                    express_developers_guide_prod_server_data; do
+                    docker volume inspect "$volume" >/dev/null 2>&1 || docker volume create "$volume"
+                  done
+                  # The real env file is not in git — only the committed
+                  # template is; the CI stack consumes the placeholders.
+                  cp server/.env.production.example server/.env.production
+
+            - name: Boot the production images (platform + prod compose + CI override)
+              run: >
+                  docker compose -f .docker/docker-compose-platform.yml
+                  -f .docker/docker-compose-prod.yml
+                  -f .docker/docker-compose.ci.yml up -d --wait --wait-timeout 300
+
+            - name: Probe the API through nginx
+              run: |
+                  set -euo pipefail
+                  for attempt in 1 2 3 4 5; do
+                      if curl -fsS --max-time 10 http://127.0.0.1:8080/api/health; then
+                          exit 0
+                      fi
+                      echo "health probe attempt ${attempt} failed; retrying" >&2
+                      sleep 5
+                  done
+                  echo 'health probe through nginx failed' >&2
+                  exit 1
+
+            - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+              with:
+                  node-version: 22
+                  cache: npm
+                  cache-dependency-path: e2e/package-lock.json
+
+            - name: Run browser E2E against the booted stack
+              working-directory: e2e
+              env:
+                  E2E_BASE_URL: http://127.0.0.1:8080
+              run: |
+                  npm ci
+                  npx playwright install --with-deps chromium
+                  npm test
+
+            - name: Upload Playwright artifacts on failure
+              if: failure()
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+              with:
+                  name: playwright-artifacts
+                  path: |
+                      e2e/test-results
+                      e2e/playwright-report
+                  retention-days: 14
+
+            - name: Tear down the CI stack
+              if: always()
+              run: >
+                  docker compose -f .docker/docker-compose-platform.yml
+                  -f .docker/docker-compose-prod.yml
+                  -f .docker/docker-compose.ci.yml down -v --remove-orphans
+
     build-push:
         name: Build and publish production images
-        needs: [server, client, secrets]
+        needs: [e2e]
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         runs-on: ubuntu-latest
         permissions:
@@ -73,7 +201,7 @@ jobs:
                       dockerfile: .docker/client/Dockerfile.prod
 
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
             - name: Compute commit image tag
               id: image_tag
@@ -84,25 +212,30 @@ jobs:
                   echo "tag=sha-${short_sha}" >> "$GITHUB_OUTPUT"
 
             - name: Set up QEMU
-              uses: docker/setup-qemu-action@v4
+              uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
             - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v4
+              uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
             - name: Log in to GitHub Container Registry
-              uses: docker/login-action@v4
+              uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
               with:
                   registry: ghcr.io
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Build and push image
-              uses: docker/build-push-action@v7
+              uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
               with:
                   context: .
                   file: ${{ matrix.dockerfile }}
                   platforms: linux/amd64,linux/arm64
                   push: true
+                  # Supply-chain attestations: provenance (how/where the image
+                  # was built) + SBOM (what is inside it) — pushed alongside
+                  # the image as OCI artifacts, verifiable in GHCR.
+                  provenance: true
+                  sbom: true
                   tags: |
                       ${{ matrix.image }}:${{ steps.image_tag.outputs.tag }}
                       ${{ matrix.image }}:master

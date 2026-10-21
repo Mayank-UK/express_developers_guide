@@ -75,7 +75,7 @@ describe('GET /api/demo/deploy/stack — the live process facts', () => {
 });
 
 describe('GET /api/demo/deploy/stack — the declared compose services', () => {
-  it('parses the REAL compose files: dev declares server/client/redis/mongo, prod server/client/redis', async () => {
+  it('parses the REAL compose files: dev declares server/client/redis/mongo, prod app only server/client (platform owns the rest)', async () => {
     const res = await request(createApp()).get(`${DEPLOY_DEMO_MOUNT_PATH}/stack`);
     expect(res.status).toBe(200);
 
@@ -87,14 +87,10 @@ describe('GET /api/demo/deploy/stack — the declared compose services', () => {
     // File order preserved by the tolerant parse — the order a reader sees.
     expect(dev?.file).toBe('.docker/docker-compose.yml');
     expect(dev?.services).toEqual(['server', 'client', 'redis', 'mongo']);
+    // The blue/green split: the prod APP stack carries only the stateless
+    // pair; caddy/redis/mongo moved to the persistent platform file.
     expect(prod?.file).toBe('.docker/docker-compose-prod.yml');
-    expect(prod?.services).toEqual([
-      'server',
-      'client',
-      'redis',
-      'mongo',
-      'caddy',
-    ]);
+    expect(prod?.services).toEqual(['server', 'client']);
     // Both real files parsed cleanly — no degradation notes.
     expect(dev?.note).toBeUndefined();
     expect(prod?.note).toBeUndefined();

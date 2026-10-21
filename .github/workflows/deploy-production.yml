@@ -1,9 +1,15 @@
-# Production deployment:
+# Production deployment (blue/green, zero downtime):
 # - Successful CI on master deploys the exact commit CI built.
 # - Manual dispatch deploys a specified commit's sha-* GHCR images.
-# - Each release keeps its own Compose file, Caddyfile, and env file.
-# - Failed deployment rolls back to the last successful GHCR release, if any.
-# - If no previous successful release exists, report failure without fallback.
+# - A persistent platform stack (caddy + redis + mongo, project edg_platform)
+#   boots once; each release boots an app stack (server + client) under the
+#   INACTIVE color's project (edg_blue / edg_green), is probed privately,
+#   then goes live by flipping Caddy's upstream file + a graceful reload.
+# - The live color is never touched until the new one is healthy: a
+#   pre-flip failure cleans up the failed attempt with zero impact; a
+#   post-flip failure flips back to the still-running old color (instant
+#   rollback). First-deploy and one-time legacy-migration failures have no
+#   fallback and report failure, as before.
 
 name: Deploy production
 
@@ -106,12 +112,26 @@ jobs:
                   IMAGE_TAG: sha-test
               run: |
                   set -euo pipefail
+                  test -f .docker/docker-compose-platform.yml
                   test -f .docker/docker-compose-prod.yml
                   test -f .docker/Caddyfile
-                  test -f server/.env.production
+                  test -f server/.env.production.example
+                  # The app stack's env_file must resolve for config -q; the
+                  # real file is materialized from the secret in the next step.
+                  cp server/.env.production.example server/.env.production
+                  docker compose -f .docker/docker-compose-platform.yml config -q
                   docker compose -f .docker/docker-compose-prod.yml config -q
 
-            - name: Prepare release directory on VM
+            - name: Materialize the production env file from the environment secret
+              env:
+                  PROD_ENV_B64: ${{ secrets.PROD_ENV_B64 }}
+              run: |
+                  set -euo pipefail
+                  printf '%s' "${PROD_ENV_B64:?PROD_ENV_B64 secret missing}" |
+                    base64 -d > server/.env.production
+                  chmod 600 server/.env.production
+
+            - name: Prepare directories on VM
               uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
               with:
                   host: ${{ secrets.VM_HOST }}
@@ -121,7 +141,19 @@ jobs:
                   command_timeout: 1m
                   script: |
                       set -eu
+                      mkdir -p "/home/ubuntu/express_developers_guide/platform"
                       mkdir -p "/home/ubuntu/express_developers_guide/releases/${{ steps.tag.outputs.sha }}"
+
+            - name: Transfer platform configuration
+              uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+              with:
+                  host: ${{ secrets.VM_HOST }}
+                  username: ${{ secrets.VM_USER }}
+                  key: ${{ secrets.VM_PRIVATE_KEY }}
+                  fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
+                  source: '.docker/docker-compose-platform.yml,.docker/Caddyfile'
+                  target: '/home/ubuntu/express_developers_guide/platform'
+                  strip_components: 0
 
             - name: Transfer release configuration
               uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
@@ -130,11 +162,11 @@ jobs:
                   username: ${{ secrets.VM_USER }}
                   key: ${{ secrets.VM_PRIVATE_KEY }}
                   fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
-                  source: '.docker/docker-compose-prod.yml,.docker/Caddyfile,server/.env.production'
+                  source: '.docker/docker-compose-prod.yml,server/.env.production'
                   target: '/home/ubuntu/express_developers_guide/releases/${{ steps.tag.outputs.sha }}'
                   strip_components: 0
 
-            - name: Deploy and recover if necessary
+            - name: Deploy (blue/green)
               uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
               env:
                   DEPLOY_SHA: ${{ steps.tag.outputs.sha }}
@@ -153,20 +185,25 @@ jobs:
 
                       ROOT="/home/ubuntu/express_developers_guide"
                       RELEASE_DIR="$ROOT/releases/$DEPLOY_SHA"
-                      COMPOSE_FILE="$RELEASE_DIR/.docker/docker-compose-prod.yml"
+                      APP_COMPOSE="$RELEASE_DIR/.docker/docker-compose-prod.yml"
+                      PLATFORM_COMPOSE="$ROOT/platform/docker-compose-platform.yml"
                       STATE_DIR="$ROOT/.deploy"
                       STATE_FILE="$STATE_DIR/last-successful-sha"
+                      COLOR_FILE="$STATE_DIR/active-color"
                       HEALTH_URL="https://expressdevelopersguide.duckdns.org/api/health"
 
-                      test -f "$COMPOSE_FILE"
-                      test -f "$RELEASE_DIR/.docker/Caddyfile"
+                      test -f "$APP_COMPOSE"
                       test -f "$RELEASE_DIR/server/.env.production"
+                      test -f "$PLATFORM_COMPOSE"
+                      test -f "$ROOT/platform/Caddyfile"
 
                       mkdir -p "$STATE_DIR"
 
                       # Authenticate to GHCR without putting the token in command arguments.
                       printf '%s' "$GHCR_PULL_TOKEN" |
                         docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+                      export IMAGE_TAG
 
                       # Read the last successful release, if one exists.
                       PREVIOUS_SHA=""
@@ -178,40 +215,100 @@ jobs:
                         fi
                       fi
 
-                      # Verify rollback readiness before risking the current release.
-                      if [ -n "$PREVIOUS_SHA" ]; then
-                        PREVIOUS_DIR="$ROOT/releases/$PREVIOUS_SHA"
-                        PREVIOUS_COMPOSE="$PREVIOUS_DIR/.docker/docker-compose-prod.yml"
-                        PREVIOUS_TAG="sha-$(printf '%s' "$PREVIOUS_SHA" | cut -c1-7)"
-
-                        if [ ! -f "$PREVIOUS_COMPOSE" ] ||
-                           [ ! -f "$PREVIOUS_DIR/.docker/Caddyfile" ] ||
-                           [ ! -f "$PREVIOUS_DIR/server/.env.production" ]; then
-                          echo "Previous release configuration is incomplete; refusing deployment." >&2
+                      # ── 1. One-time legacy migration (single-stack era) ──────────
+                      # The old workflow ran ONE compose project
+                      # (express_developers_guide_prod) containing caddy, redis,
+                      # and mongo. If its containers are still running, stop them
+                      # so the platform stack can adopt their named volumes. This
+                      # causes a one-time ~seconds availability blip; every later
+                      # deploy is a zero-downtime color flip.
+                      if [ -n "$PREVIOUS_SHA" ] &&
+                         docker ps --format '{{.Names}}' |
+                           grep -q '^express_developers_guide_.*_prod'; then
+                        LEGACY_COMPOSE="$ROOT/releases/$PREVIOUS_SHA/.docker/docker-compose-prod.yml"
+                        if [ ! -f "$LEGACY_COMPOSE" ] ||
+                           [ ! -f "$ROOT/releases/$PREVIOUS_SHA/server/.env.production" ]; then
+                          echo "Legacy stack is running but its release configuration is incomplete; refusing deployment." >&2
                           exit 1
                         fi
-
-                        if ! IMAGE_TAG="$PREVIOUS_TAG" \
-                          docker compose -f "$PREVIOUS_COMPOSE" config -q; then
-                          echo "Previous release configuration is invalid; refusing deployment." >&2
-                          exit 1
-                        fi
-
-                        if ! IMAGE_TAG="$PREVIOUS_TAG" \
-                          docker compose -f "$PREVIOUS_COMPOSE" pull server client; then
-                          echo "Previous GHCR images are unavailable; refusing deployment." >&2
-                          exit 1
-                        fi
-
-                        echo "Previous GHCR release is ready for rollback: $PREVIOUS_TAG"
-                      else
-                        echo "No previous successful release recorded; rollback will not be attempted if this first deployment fails."
+                        echo "Migrating: stopping the legacy single-stack release $PREVIOUS_SHA (one-time blip)."
+                        docker compose -p express_developers_guide_prod -f "$LEGACY_COMPOSE" down --remove-orphans
                       fi
 
-                      # Validate and pull the candidate BEFORE stopping production.
-                      export IMAGE_TAG
-                      docker compose -f "$COMPOSE_FILE" config -q
-                      docker compose -f "$COMPOSE_FILE" pull server client
+                      # ── 2. Shared infrastructure: networks + external volumes ────
+                      docker network create edg_frontend 2>/dev/null || true
+                      docker network create edg_backend 2>/dev/null || true
+                      for volume in \
+                        express_developers_guide_prod_redis_data \
+                        express_developers_guide_prod_mongo_data \
+                        express_developers_guide_prod_caddy_data \
+                        express_developers_guide_prod_caddy_config \
+                        express_developers_guide_prod_server_data; do
+                        docker volume inspect "$volume" >/dev/null 2>&1 ||
+                          docker volume create "$volume"
+                      done
+
+                      # ── 3. Active color + persistent platform stack ─────────────
+                      HAD_ACTIVE_COLOR=0
+                      ACTIVE_COLOR=""
+                      if [ -s "$COLOR_FILE" ]; then
+                        ACTIVE_COLOR="$(cat "$COLOR_FILE")"
+                        if [ "$ACTIVE_COLOR" != "blue" ] && [ "$ACTIVE_COLOR" != "green" ]; then
+                          echo "The saved active color is invalid; refusing deployment." >&2
+                          exit 1
+                        fi
+                        HAD_ACTIVE_COLOR=1
+                      fi
+                      # First deploy targets blue; the platform's upstream then
+                      # 502s (nothing is live yet) until the flip below.
+                      ACTIVE_COLOR="${ACTIVE_COLOR:-blue}"
+
+                      printf 'reverse_proxy edg_client_%s:80\n' "$ACTIVE_COLOR" \
+                        > "$ROOT/platform/upstream.caddy"
+                      docker compose -f "$PLATFORM_COMPOSE" -p edg_platform up -d --wait
+
+                      # ── 4. Pick the inactive color; gate on platform health ─────
+                      if [ "$HAD_ACTIVE_COLOR" -eq 1 ]; then
+                        if [ "$ACTIVE_COLOR" = "blue" ]; then COLOR="green"; else COLOR="blue"; fi
+                      else
+                        COLOR="blue"
+                      fi
+                      export COLOR
+
+                      for datastore in edg_redis edg_mongo; do
+                        status="$(docker inspect -f '{{.State.Health.Status}}' "$datastore")"
+                        if [ "$status" != "healthy" ]; then
+                          echo "Platform datastore $datastore is '$status', not healthy; refusing deployment." >&2
+                          exit 1
+                        fi
+                      done
+
+                      # ── 5. Boot the candidate color ─────────────────────────────
+                      echo "Deploying GHCR release $IMAGE_TAG as color $COLOR"
+                      docker compose -p "edg_$COLOR" -f "$APP_COMPOSE" pull server client
+                      docker compose -p "edg_$COLOR" -f "$APP_COMPOSE" up -d --no-build --wait
+
+                      # ── 6. Probe the new color privately (belt over --wait) ─────
+                      COLOR_NET="edg_${COLOR}_app_internal"
+                      docker network inspect "$COLOR_NET" >/dev/null
+
+                      probe_new_color() {
+                        docker run --rm --network "$COLOR_NET" busybox:stable \
+                          wget -qO- --timeout=10 "$1" >/dev/null
+                      }
+
+                      if ! probe_new_color "http://server:4000/api/health" ||
+                         ! probe_new_color "http://client/"; then
+                        # ── 7. Pre-flip failure: the live color was never touched.
+                        echo "New color $COLOR failed its private probe; cleaning it up." >&2
+                        docker compose -p "edg_$COLOR" -f "$APP_COMPOSE" down --remove-orphans
+                        exit 1
+                      fi
+
+                      # ── 8. Flip: upstream file + graceful caddy reload ──────────
+                      printf 'reverse_proxy edg_client_%s:80\n' "$COLOR" \
+                        > "$ROOT/platform/upstream.caddy"
+                      docker exec edg_caddy caddy reload --config /etc/caddy/Caddyfile
 
                       wait_for_health() {
                         attempt=1
@@ -227,64 +324,48 @@ jobs:
                         return 1
                       }
 
-                      echo "Deploying GHCR release $IMAGE_TAG"
-
-                      DEPLOY_OK=0
-                      if docker compose -f "$COMPOSE_FILE" down --remove-orphans &&
-                         docker compose -f "$COMPOSE_FILE" up -d --no-build; then
-                        if wait_for_health; then
-                          DEPLOY_OK=1
-                        fi
-                      fi
-
-                      if [ "$DEPLOY_OK" -eq 1 ]; then
-                        # Persist only after the HTTPS health check passes.
+                      # ── 9. Public health gate ───────────────────────────────────
+                      if wait_for_health; then
+                        # ── 10. Success: persist state atomically, retire the old
+                        # color, prune old release dirs (keep the newest 5, never
+                        # the active or previous sha).
                         printf '%s\n' "$DEPLOY_SHA" > "$STATE_FILE.tmp"
                         mv "$STATE_FILE.tmp" "$STATE_FILE"
-                        echo "Deployment succeeded: $DEPLOY_SHA"
+                        printf '%s\n' "$COLOR" > "$COLOR_FILE.tmp"
+                        mv "$COLOR_FILE.tmp" "$COLOR_FILE"
+
+                        if [ "$COLOR" = "blue" ]; then OTHER="green"; else OTHER="blue"; fi
+                        docker compose -p "edg_$OTHER" -f "$APP_COMPOSE" down --remove-orphans
+
+                        cd "$ROOT/releases"
+                        ls -t | tail -n +6 | while read -r dir; do
+                          if [ "$dir" != "$DEPLOY_SHA" ] && [ "$dir" != "$PREVIOUS_SHA" ]; then
+                            rm -rf "$ROOT/releases/$dir"
+                            echo "Pruned old release directory: $dir"
+                          fi
+                        done
+
+                        echo "Deployment succeeded: $DEPLOY_SHA (active color: $COLOR)"
                         exit 0
                       fi
 
-                      echo "Deployment failed: $DEPLOY_SHA" >&2
-                      docker compose -f "$COMPOSE_FILE" ps || true
+                      # ── 11. Post-flip failure: instant rollback ─────────────────
+                      echo "Public health check failed after the flip: $DEPLOY_SHA" >&2
 
-                      # First deployment: deliberately do not fall back anywhere.
-                      if [ -z "$PREVIOUS_SHA" ]; then
-                        echo "No previous successful GHCR release exists. No rollback attempted." >&2
-                        exit 1
-                      fi
-
-                      PREVIOUS_DIR="$ROOT/releases/$PREVIOUS_SHA"
-                      PREVIOUS_COMPOSE="$PREVIOUS_DIR/.docker/docker-compose-prod.yml"
-                      PREVIOUS_TAG="sha-$(printf '%s' "$PREVIOUS_SHA" | cut -c1-7)"
-
-                      if [ ! -f "$PREVIOUS_COMPOSE" ] ||
-                         [ ! -f "$PREVIOUS_DIR/.docker/Caddyfile" ] ||
-                         [ ! -f "$PREVIOUS_DIR/server/.env.production" ]; then
-                        echo "Previous release configuration is missing. Automatic rollback cannot proceed." >&2
-                        exit 1
-                      fi
-
-                      echo "Attempting rollback to $PREVIOUS_TAG"
-
-                      IMAGE_TAG="$PREVIOUS_TAG"
-                      export IMAGE_TAG
-
-                      # Pull and validate the old release before changing containers again.
-                      if ! docker compose -f "$PREVIOUS_COMPOSE" config -q ||
-                         ! docker compose -f "$PREVIOUS_COMPOSE" pull server client; then
-                        echo "Could not validate or pull the previous GHCR release. Rollback failed." >&2
-                        exit 1
-                      fi
-
-                      if docker compose -f "$PREVIOUS_COMPOSE" down --remove-orphans &&
-                         docker compose -f "$PREVIOUS_COMPOSE" up -d --no-build &&
-                         wait_for_health; then
-                        echo "Rollback succeeded: $PREVIOUS_TAG" >&2
+                      if [ "$HAD_ACTIVE_COLOR" -eq 1 ]; then
+                        echo "Flipping back to the still-running color $ACTIVE_COLOR." >&2
+                        printf 'reverse_proxy edg_client_%s:80\n' "$ACTIVE_COLOR" \
+                          > "$ROOT/platform/upstream.caddy"
+                        docker exec edg_caddy caddy reload --config /etc/caddy/Caddyfile
+                        if wait_for_health; then
+                          echo "Rollback succeeded: $ACTIVE_COLOR is serving again." >&2
+                        else
+                          echo "Rollback verification failed; manual intervention is required." >&2
+                        fi
+                        docker compose -p "edg_$COLOR" -f "$APP_COMPOSE" down --remove-orphans
                         echo "The failed deployment remains marked as failed." >&2
                         exit 1
                       fi
 
-                      echo "Rollback to $PREVIOUS_TAG failed. Manual intervention is required." >&2
-                      docker compose -f "$PREVIOUS_COMPOSE" ps || true
+                      echo "No previous successful release exists. No rollback attempted." >&2
                       exit 1

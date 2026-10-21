@@ -1,0 +1,54 @@
+# Dependabot keeps this repo's supply chain current: SHA-pinned actions in
+# the workflows (the # vX.Y.Z comments are what it rewrites), npm deps per
+# package, and FROM-line base images for the two production Dockerfiles.
+# Weekly cadence, Monday morning UTC — Dependabot batches around the time,
+# it does not fire at it exactly.
+version: 2
+updates:
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: weekly
+          day: monday
+          time: "06:00"
+          timezone: Etc/UTC
+
+    - package-ecosystem: npm
+      directory: /server
+      schedule:
+          interval: weekly
+          day: monday
+          time: "06:00"
+          timezone: Etc/UTC
+
+    - package-ecosystem: npm
+      directory: /client
+      schedule:
+          interval: weekly
+          day: monday
+          time: "06:00"
+          timezone: Etc/UTC
+
+    - package-ecosystem: npm
+      directory: /e2e
+      schedule:
+          interval: weekly
+          day: monday
+          time: "06:00"
+          timezone: Etc/UTC
+
+    - package-ecosystem: docker
+      directory: /.docker/server
+      schedule:
+          interval: weekly
+          day: monday
+          time: "06:00"
+          timezone: Etc/UTC
+
+    - package-ecosystem: docker
+      directory: /.docker/client
+      schedule:
+          interval: weekly
+          day: monday
+          time: "06:00"
+          timezone: Etc/UTC

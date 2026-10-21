@@ -28,3 +28,18 @@ npm install
 npx playwright install chromium
 npm test
 ```
+
+## `E2E_BASE_URL`
+
+`playwright.config.ts` reads `E2E_BASE_URL` to override the default
+`baseURL` (`http://localhost:5173`, the devcontainer's Vite server). CI uses
+it to run this same suite against the PRODUCTION images instead — the
+workflow builds both images, boots them with the CI compose override
+(`.docker/docker-compose.ci.yml`, nginx published on the loopback), and runs
+`E2E_BASE_URL=http://127.0.0.1:8080 npm test`. To reproduce that locally:
+
+```bash
+docker compose -f .docker/docker-compose-prod.yml \
+  -f .docker/docker-compose.ci.yml up -d --wait
+cd e2e && E2E_BASE_URL=http://127.0.0.1:8080 npm test
+```
