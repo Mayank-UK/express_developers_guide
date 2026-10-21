@@ -62,16 +62,21 @@ export const topicDeployment: Topic = {
         {
           kind: 'text',
           id: 'deploy-docker:server-dockerfile',
-          body: `THE SERVER IMAGE, STAGE BY STAGE — this is the repo's real .docker/server/Dockerfile.prod, quoted whole below. The BUILD stage carries the toolchain and dev dependencies, compiles TypeScript, and dies there. The PROD-DEPS stage is the one most tutorials skip: it exists purely to run \`npm ci --omit=dev\` WITH build tooling present, producing a production node_modules whose install (with its node-gyp step) succeeds — while no compilers reach the runtime image. The RUNTIME stage is plain node:22-alpine plus two COPY --from lines — node_modules from prod-deps, dist from build — so the shipped image contains NO python, NO make, NO g++. Why the toolchain is needed AT ALL is the lesson this repo earned the hard way (next block); why it must NOT ship in the final image is defense-in-depth: compilers in a production image are attack surface for anyone who achieves code execution. Note also what the runtime stage does NOT have: no .env files (context-excluded), no src/ (the TypeScript never ships — source maps and error trackers are the debugging topic's answer to that), no data/ volume (state is the orchestrator's to declare — the compose section's server_data mount at /app/data is where sqlite lands).`,
+          body: `THE SERVER IMAGE, STAGE BY STAGE — this is the repo's real .docker/server/Dockerfile.prod, quoted whole below. The BUILD stage carries the toolchain and dev dependencies, compiles TypeScript, and dies there — pinned to $BUILDPLATFORM so it runs on the builder's OWN CPU: CROSS-COMPILE (tsc emits plain JavaScript and the stage's node_modules never leave it, so architecture is irrelevant to it — npm ci and tsc never pay QEMU emulation). The PROD-DEPS stage is the one most tutorials skip: it exists purely to run \`npm ci --omit=dev\` WITH build tooling present, producing a production node_modules whose install (with its node-gyp step) succeeds — while no compilers reach the runtime image. It deliberately takes NO $BUILDPLATFORM pin: its node_modules SHIP in the image, so this stage resolves to the TARGET architecture and must deliver the target CPU's better-sqlite3 prebuild — the one stage an amd64 runner publishing arm64 still executes under emulation. The RUNTIME stage is plain node:22-alpine plus two COPY --from lines — node_modules from prod-deps, dist from build — so the shipped image contains NO python, NO make, NO g++. Why the toolchain is needed AT ALL is the lesson this repo earned the hard way (next block); why it must NOT ship in the final image is defense-in-depth: compilers in a production image are attack surface for anyone who achieves code execution. Note also what the runtime stage does NOT have: no .env files (context-excluded), no src/ (the TypeScript never ships — source maps and error trackers are the debugging topic's answer to that), no data/ volume (state is the orchestrator's to declare — the compose section's server_data mount at /app/data is where sqlite lands).`,
         },
         {
           kind: 'code',
           id: 'deploy-docker:server-dockerfile-quote',
           language: 'dockerfile',
-          caption: 'Verbatim — .docker/server/Dockerfile.prod (three stages; toolchain never ships)',
+          caption: 'Verbatim — .docker/server/Dockerfile.prod (three stages; build cross-compiled, toolchain never ships)',
           source: '.docker/server/Dockerfile.prod',
           code: `# ---- build stage: compile TypeScript (dev deps never leave this stage) ----
-FROM node:22-alpine AS build
+# CROSS-COMPILE: $BUILDPLATFORM is a BuildKit automatic resolving to the
+# machine RUNNING the build, whatever --platform the final image targets —
+# npm ci and tsc run on the builder's native CPU, never under QEMU. Safe
+# because tsc's output is plain JavaScript and this stage's node_modules die
+# with the stage: nothing arch-specific escapes it.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 # better-sqlite3 is a NATIVE module, and npm's legacy binding.gyp default
 # runs \`node-gyp rebuild\` at install (the package ships no install script —
 # the default still fires). Without python3/make/g++ that step FAILS and
@@ -88,12 +93,21 @@ COPY server/src ./src
 RUN npm run build
 
 # ---- prod-deps stage: install PRODUCTION deps (with their native build) ----
+# NO --platform=$BUILDPLATFORM here, deliberately. This stage resolves to the
+# image's TARGET architecture because its node_modules SHIP to the runtime
+# and must carry the target CPU's native binaries (better-sqlite3's bundled
+# musl prebuild). An amd64 runner publishing arm64 therefore pays QEMU
+# emulation exactly here, and only here — the one stage whose output is
+# architecture-bound. Cross-compiling THIS stage would ship amd64 binaries to
+# an arm64 VM.
 FROM node:22-alpine AS prod-deps
 # Same toolchain, same reason: \`npm ci --omit=dev\` still runs the gyp default.
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY server/package*.json ./
-RUN npm ci --omit=dev
+# Cache mount: the (possibly emulated) install reuses the npm download cache
+# across builds instead of re-fetching every cold run.
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 # ---- runtime stage: node + built artifacts, NO compilers in the image ----
 FROM node:22-alpine
@@ -118,10 +132,16 @@ CMD ["node", "dist/server.js"]`,
           id: 'deploy-docker:client-quote',
           language: 'dockerfile',
           caption:
-            'Verbatim — .docker/client/Dockerfile.prod: the static-half pattern (build in node, ship in nginx)',
+            'Verbatim — .docker/client/Dockerfile.prod: the static-half pattern (build in node, ship in nginx) with a $BUILDPLATFORM cross-compile',
           source: '.docker/client/Dockerfile.prod',
-          code: `# ---- build stage ----
-FROM node:22-alpine AS build
+          code: `# ---- build stage: CROSS-COMPILED on the builder's own CPU ($BUILDPLATFORM) ----
+# $BUILDPLATFORM is a BuildKit automatic: it resolves to the machine RUNNING
+# the build no matter which --platform the final image targets, so npm ci and
+# vite build execute on native silicon instead of ~10-20x-slower QEMU
+# emulation. This works because their output — dist/ — is STATIC FILES with
+# no architecture in them: compile where it is fast, resolve the target
+# architecture only in the final FROM below.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 COPY client/package*.json ./
 RUN npm ci
@@ -129,6 +149,8 @@ COPY client/ ./
 RUN npm run build
 
 # ---- runtime stage: static bundle behind nginx, /api proxied to the server ----
+# No --platform pin here: this FROM resolves to the image's TARGET
+# architecture — nginx's binaries are the only arch-sensitive bytes shipped.
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY .docker/client/default.conf /etc/nginx/conf.d/default.conf
@@ -569,14 +591,14 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));`,
         {
           kind: 'text',
           id: 'deploy-cicd:pipeline',
-          body: `THE PIPELINE, STAGE BY STAGE — what the real .github/workflows/ci.yml runs on every push to master and every pull request. (0) SETUP — checkout, Node 22, and the npm cache keyed on each package's lockfile (the cache is what keeps \`npm ci\` under a minute instead of under five); every \`uses:\` step is pinned to a FULL 40-CHAR COMMIT SHA with a \`# vX.Y.Z\` comment, because a mutable tag can be repointed by anyone who owns the tag — the pin is the lock, the comment is the version. UPDATING THEM IS MANUAL BY CHOICE: this repo briefly ran Dependabot's weekly pin-rewrites, then automated dependency PRs were deliberately switched off (an automation tier is one config file away — the invariant it must preserve is the SHA and its version comment moving together, with CI as the proof). (1) LINT — HONEST GAP: neither package has a linter installed (no eslint, no config), so the lint stage does not exist yet and this topic will not pretend otherwise; the first line of the pipeline's future is \`npx eslint .\` after the dependency lands. (2) TEST — \`npm run test:coverage\` on BOTH packages now: the server's Vitest/Supertest suite runs under V8 coverage with ENFORCED THRESHOLDS from vitest.config.ts (a measured floor for lines/branches/functions/statements — slip under the percentages and the build goes red, so coverage gaps become visible instead of invisible), while the client's jsdom suite runs coverage REPORT-ONLY — no thresholds, by design: the server carries the enforced floor, the client's numbers are attached to the run as 14-day artifacts next to the server's, visible without re-running anything. Zero service containers either way — vitest runs with NODE_ENV unset, which forces the test mapping to sqlite ':memory:', and the live mongo/redis worlds are skipIf-gated, so the default CI world is hermetic by construction. (3) BUILD — both \`npm run build\`s, because a pipeline that never runs the build ships the first broken build to Docker (the server's tsc and the client's tsc -b + vite build are both compile gates). (4) IMAGE SMOKE + BROWSER GATE — the \`e2e\` job, \`needs: [server, client, secrets]\`: build BOTH images from the SAME Dockerfile.prod files the compose stack uses (one artifact definition, everywhere) as local \`:ci\`-tagged images — no registry involved yet — then boot them with the PLATFORM compose file, the PROD app compose, and a CI OVERRIDE (docker-compose.ci.yml) that pins the \`:ci\` tags and fixed container names, drops the caddy TLS edge via an inactive profile (its 80/443 publishes and ACME behavior must never run on a runner), and publishes nginx on the loopback only — after a prepare step creates the external edg_frontend/edg_backend networks and the five external volumes idempotently and materializes server/.env.production from the committed template; \`up -d --wait\` blocks on the healthchecks, a curl proves /api/health THROUGH nginx, and the host-side Playwright suite drives the real UI against the booted stack (\`E2E_BASE_URL=http://127.0.0.1:8080\`) — every PR now proves the images not only BUILD but SERVE. (5) PUSH TO GHCR — \`build-push\`, \`needs: [e2e]\` so it transitively waits on everything: on master only, both images are pushed multi-arch (amd64+arm64) as \`sha-<7>\` AND \`master\` tags with PROVENANCE + SBOM ATTESTATIONS attached (OCI artifacts in GHCR answering WHERE it was built and WHAT is inside — the supply-chain receipts), and the gha build cache shares scopes with the e2e job so the pushed image reuses the smoke-tested layers (an image in a registry is a DEPLOYABLE UNIT, and a deployable unit that skipped tests is a loaded gun — the needs chain is the safety). Alongside the package jobs a \`secrets\` job runs gitleaks over the FULL history on every push and PR — the guard that a REAL credential can never silently enter Git; this repo whitelists three placeholder-only .env teaching files, which gitleaks' entropy rules won't flag, so the gate is green by honesty, not exemption. THE SEMVER DISCIPLINE for release tags: vX.Y.Z where X breaks API, Y adds, Z fixes — and tags are IMMUTABLE (never move a pushed tag; deploy rolls FORWARD by tagging the fix).`,
+          body: `THE PIPELINE, STAGE BY STAGE — what the real .github/workflows/ci.yml runs on every push to master and every pull request. (0) SETUP — checkout, Node 22, and the npm cache keyed on each package's lockfile (the cache is what keeps \`npm ci\` under a minute instead of under five); every \`uses:\` step is pinned to a FULL 40-CHAR COMMIT SHA with a \`# vX.Y.Z\` comment, because a mutable tag can be repointed by anyone who owns the tag — the pin is the lock, the comment is the version. UPDATING THEM IS MANUAL BY CHOICE: this repo briefly ran Dependabot's weekly pin-rewrites, then automated dependency PRs were deliberately switched off (an automation tier is one config file away — the invariant it must preserve is the SHA and its version comment moving together, with CI as the proof). (1) LINT — HONEST GAP: neither package has a linter installed (no eslint, no config), so the lint stage does not exist yet and this topic will not pretend otherwise; the first line of the pipeline's future is \`npx eslint .\` after the dependency lands. (2) TEST — \`npm run test:coverage\` on BOTH packages now: the server's Vitest/Supertest suite runs under V8 coverage with ENFORCED THRESHOLDS from vitest.config.ts (a measured floor for lines/branches/functions/statements — slip under the percentages and the build goes red, so coverage gaps become visible instead of invisible), while the client's jsdom suite runs coverage REPORT-ONLY — no thresholds, by design: the server carries the enforced floor, the client's numbers are attached to the run as 14-day artifacts next to the server's, visible without re-running anything. Zero service containers either way — vitest runs with NODE_ENV unset, which forces the test mapping to sqlite ':memory:', and the live mongo/redis worlds are skipIf-gated, so the default CI world is hermetic by construction. (3) BUILD — both \`npm run build\`s, because a pipeline that never runs the build ships the first broken build to Docker (the server's tsc and the client's tsc -b + vite build are both compile gates). (4) IMAGE SMOKE + BROWSER GATE — the \`e2e\` job, \`needs: [server, client, secrets]\`: build BOTH images from the SAME Dockerfile.prod files the compose stack uses (one artifact definition, everywhere) as local \`:ci\`-tagged images — no registry involved yet — then boot them with the PLATFORM compose file, the PROD app compose, and a CI OVERRIDE (docker-compose.ci.yml) that pins the \`:ci\` tags and fixed container names, drops the caddy TLS edge via an inactive profile (its 80/443 publishes and ACME behavior must never run on a runner), and publishes nginx on the loopback only — after a prepare step creates the external edg_frontend/edg_backend networks and the five external volumes idempotently and materializes server/.env.production from the committed template; \`up -d --wait\` blocks on the healthchecks, a curl proves /api/health THROUGH nginx, and the host-side Playwright suite drives the real UI against the booted stack (\`E2E_BASE_URL=http://127.0.0.1:8080\`) — every PR now proves the images not only BUILD but SERVE. (5) PUSH TO GHCR — \`build-push\`, \`needs: [e2e, vm-arch]\` so it transitively waits on everything. The \`vm-arch\` recon job starts in parallel with the tests (no needs of its own): it SSHes the DEPLOYMENT VM and captures \`uname -m\` (the same SHA-pinned appleboy/ssh-action and production-environment VM secrets the deploy workflow uses), maps aarch64→arm64 / x86_64→amd64, and fails loudly on anything else — the pipeline ASKS the machine that will run the image what CPU it has instead of assuming. On master only, both images are then pushed SINGLE-PLATFORM — exactly the arch the VM reported — as \`sha-<7>\` AND \`master\` tags with PROVENANCE + SBOM ATTESTATIONS attached (OCI artifacts in GHCR answering WHERE it was built and WHAT is inside — the supply-chain receipts), and the gha build cache shares scopes with the e2e job so the pushed image reuses the smoke-tested layers (an image in a registry is a DEPLOYABLE UNIT, and a deployable unit that skipped tests is a loaded gun — the needs chain is the safety). WHY NOT multi-arch: the hardcoded amd64+arm64 era ended when the emulated arm64 client leg (a cold npm ci + Vite build under QEMU, ~10-20x slower than native) pushed past 55 minutes — and the second platform was paying rent on a machine nobody runs. The speed half of the redesign lives in the Dockerfiles, as CROSS-COMPILE: every BUILD stage is pinned to $BUILDPLATFORM (BuildKit's automatic for the machine RUNNING the build) so npm ci, tsc, and vite build compile on the runner's NATIVE CPU, and only the final stages resolve the target arch — the client needs ZERO emulation (its artifact is static files behind nginx), while the server pays emulation in exactly ONE stage, the prod-deps install whose native better-sqlite3 binaries must match the VM's CPU. THE TAIL OF STAGE (5) IS HYGIENE: a \`ghcr-prune\` job (\`needs: build-push\`) walks each package's GHCR version list and DELETES sha-tagged versions beyond the newest 10 — automatic retention, so the registry mirrors the VM's own keep-5 release pruning plus rollback margin — plus every UNTAGGED version, because repointing the floating \`master\` tag orphans the old one and an untagged GHCR version is unreachable by any pull: pure garbage (\`master\`/\`latest\` themselves are never touched, and individual delete failures log as warnings only — hygiene must never block CD). Alongside the package jobs a \`secrets\` job runs gitleaks over the FULL history on every push and PR — the guard that a REAL credential can never silently enter Git; this repo whitelists three placeholder-only .env teaching files, which gitleaks' entropy rules won't flag, so the gate is green by honesty, not exemption. THE SEMVER DISCIPLINE for release tags: vX.Y.Z where X breaks API, Y adds, Z fixes — and tags are IMMUTABLE (never move a pushed tag; deploy rolls FORWARD by tagging the fix).`,
         },
         {
           kind: 'code',
           id: 'deploy-cicd:workflow-quote',
           language: 'yaml',
           caption:
-            'Verbatim — the real .github/workflows/ci.yml this repo runs on every push and pull request (the e2e image gate + the attested GHCR publish; every uses: pinned to a commit SHA — the version comments keep each manual bump reviewable)',
+            'Verbatim — the real .github/workflows/ci.yml this repo runs on every push and pull request (the e2e image gate, the VM-arch recon, and the attested single-platform GHCR publish; every uses: pinned to a commit SHA — the version comments keep each manual bump reviewable)',
           source: '.github/workflows/ci.yml',
           code: `name: CI
 
@@ -637,17 +659,36 @@ jobs:
           -f .docker/docker-compose-prod.yml
           -f .docker/docker-compose.ci.yml down -v --remove-orphans
 
-  build-push:
-    needs: [e2e]
+  vm-arch:
+    name: Detect VM architecture
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    # … QEMU + buildx, GHCR login with the ephemeral GITHUB_TOKEN,
+    environment: production
+    outputs:
+      arch: \${{ steps.arch.outputs.arch }}
+    steps:
+      - name: Read the VM's architecture over SSH
+        id: vm
+        # … the SAME SHA-pinned appleboy/ssh-action the deploy workflow uses,
+        # the VM_* production-environment secrets, command_timeout: 1m,
+        # capture_stdout: true, script: uname -m …
+      - name: Map uname output to a Docker platform architecture
+        id: arch
+        # … trims the captured stdout, maps aarch64→arm64 / x86_64|amd64→amd64
+        # (anything else fails the job), writes arch=<value> to $GITHUB_OUTPUT
+
+  build-push:
+    needs: [e2e, vm-arch]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # … QEMU (kept: the server's prod-deps stage still emulates when the VM
+    # is arm64) + buildx, GHCR login with the ephemeral GITHUB_TOKEN,
     # sha-<7> + master tags per matrix leg …
     steps:
       # …
       - name: Build and push image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/\${{ needs.vm-arch.outputs.arch }}
           push: true
           # Supply-chain attestations: provenance (how/where the image
           # was built) + SBOM (what is inside it).
@@ -657,7 +698,12 @@ jobs:
             \${{ matrix.image }}:\${{ steps.image_tag.outputs.tag }}
             \${{ matrix.image }}:master
           cache-from: type=gha,scope=\${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=\${{ matrix.service }}`,
+          cache-to: type=gha,mode=max,scope=\${{ matrix.service }}
+
+  # … and the pipeline's last job is registry hygiene: ghcr-prune
+  # (needs: build-push) deletes sha-tagged GHCR versions beyond the newest 10
+  # per package plus untagged orphans left by master repoints — master/latest
+  # are never touched, and delete failures only warn (hygiene never blocks CD) …`,
         },
         {
           kind: 'text',

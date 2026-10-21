@@ -192,7 +192,7 @@ FROM node:22-alpine AS prod-deps
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY server/package*.json ./
-RUN npm ci --omit=dev            # ← the install-time consequence:
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev            # ← the install-time consequence:
                                  #    devDependencies never reach the runtime image
 
 # ---- runtime stage: node + built artifacts, NO compilers in the image ----

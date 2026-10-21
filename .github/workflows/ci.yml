@@ -1,5 +1,5 @@
 # CI: test the packages, scan for secrets, smoke the production images with a
-# real browser, and publish attested images from master.
+# real browser, publish attested images from master, and prune old GHCR tags.
 name: CI
 
 on:
@@ -180,9 +180,54 @@ jobs:
                   -f .docker/docker-compose-prod.yml
                   -f .docker/docker-compose.ci.yml down -v --remove-orphans
 
+    # The deployment VM's CPU decides what gets published: one SSH recon
+    # (uname -m) replaces the hardcoded platform pair — build-push then
+    # publishes exactly the one platform the VM runs.
+    vm-arch:
+        name: Detect VM architecture
+        runs-on: ubuntu-latest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        # The VM SSH secrets live in the production environment — the same
+        # scope the deploy workflow reads them from.
+        environment: production
+        outputs:
+            arch: ${{ steps.arch.outputs.arch }}
+        steps:
+            - name: Read the VM's architecture over SSH
+              id: vm
+              uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+              with:
+                  host: ${{ secrets.VM_HOST }}
+                  username: ${{ secrets.VM_USER }}
+                  key: ${{ secrets.VM_PRIVATE_KEY }}
+                  fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
+                  command_timeout: 1m
+                  capture_stdout: true
+                  script: uname -m
+
+            - name: Map uname output to a Docker platform architecture
+              id: arch
+              shell: bash
+              env:
+                  VM_UNAME: ${{ steps.vm.outputs.stdout }}
+              run: |
+                  set -euo pipefail
+                  # capture_stdout hands back the raw stdout — trim any
+                  # trailing newline/whitespace before matching.
+                  raw="$(printf '%s' "$VM_UNAME" | tr -d '[:space:]')"
+                  case "$raw" in
+                      aarch64) arch=arm64 ;;
+                      x86_64 | amd64) arch=amd64 ;;
+                      *)
+                          echo "Unrecognized VM architecture: '$raw'" >&2
+                          exit 1
+                          ;;
+                  esac
+                  echo "arch=$arch" >> "$GITHUB_OUTPUT"
+
     build-push:
         name: Build and publish production images
-        needs: [e2e]
+        needs: [e2e, vm-arch]
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         runs-on: ubuntu-latest
         permissions:
@@ -211,6 +256,8 @@ jobs:
                   short_sha="$(printf '%s' "$GITHUB_SHA" | cut -c1-7)"
                   echo "tag=sha-${short_sha}" >> "$GITHUB_OUTPUT"
 
+            # Unconditional: the server's prod-deps stage still runs under
+            # emulation when the VM is arm64; on amd64 targets this is a no-op.
             - name: Set up QEMU
               uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
@@ -229,7 +276,7 @@ jobs:
               with:
                   context: .
                   file: ${{ matrix.dockerfile }}
-                  platforms: linux/amd64,linux/arm64
+                  platforms: linux/${{ needs.vm-arch.outputs.arch }}
                   push: true
                   # Supply-chain attestations: provenance (how/where the image
                   # was built) + SBOM (what is inside it) — pushed alongside
@@ -241,3 +288,121 @@ jobs:
                       ${{ matrix.image }}:master
                   cache-from: type=gha,scope=${{ matrix.service }}
                   cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+    # GHCR tag retention: every master push leaves one sha-<7> version per
+    # package in the registry, and repointing the floating `master` tag
+    # orphans the previous version as UNTAGGED — unreachable by any pull.
+    # This job deletes sha-tagged versions beyond the newest 10 (keep-10
+    # aligns with the VM's keep-5 release dirs plus margin for
+    # workflow_dispatch rollback targets) and those untagged orphans; the
+    # `master`/`latest` tags themselves are never pruned, and individual
+    # delete failures only warn — hygiene must never block CD.
+    ghcr-prune:
+        name: Prune old GHCR image tags
+        needs: [build-push]
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+
+        steps:
+            - name: Delete sha-tagged GHCR versions beyond the newest 10
+              shell: bash
+              env:
+                  # The token rides in env, never inlined into the script
+                  # body; the script never runs with set -x.
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  set -euo pipefail
+
+                  api='https://api.github.com'
+                  keep=10
+                  pages_max=3
+
+                  prune_package() {
+                      local pkg="$1"
+                      local encoded="${pkg//\//%2F}"
+                      local merged='[]'
+
+                      # (1) Paginate the version list; a short page ends the walk
+                      # (3 pages = 300 versions, far beyond anything real here).
+                      local page=1 page_file count
+                      while [ "$page" -le "$pages_max" ]; do
+                          page_file="$(mktemp)"
+                          if ! curl -fsS --max-time 30 \
+                              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                              -H 'Accept: application/vnd.github+json' \
+                              -o "$page_file" \
+                              "$api/user/packages/container/$encoded/versions?per_page=100&page=$page"; then
+                              echo "warn: could not list versions for $pkg — skipping it" >&2
+                              rm -f "$page_file"
+                              return 0
+                          fi
+                          if ! merged="$(jq --argjson m "$merged" --slurpfile p "$page_file" -n '$m + ($p[0] // [])')"; then
+                              echo "warn: malformed version page for $pkg — skipping it" >&2
+                              rm -f "$page_file"
+                              return 0
+                          fi
+                          count="$(jq 'length' "$page_file")"
+                          rm -f "$page_file"
+                          if [ "$count" -lt 100 ]; then
+                              break
+                          fi
+                          page=$((page + 1))
+                      done
+
+                      # Sanity guard: a malformed response must never feed the
+                      # delete loop — assert the accumulated list parses as a
+                      # JSON array BEFORE filtering; if not, warn and skip the
+                      # package (exit 0) rather than deleting blindly.
+                      if ! printf '%s' "$merged" | jq -e 'type == "array"' >/dev/null 2>&1; then
+                          echo "warn: version list for $pkg did not parse as JSON — skipping it" >&2
+                          return 0
+                      fi
+
+                      # (2) sha-tagged versions, newest first; (3) candidates:
+                      # those beyond the newest $keep minus any version still
+                      # carrying a protected tag, PLUS every UNTAGGED version —
+                      # an untagged GHCR version is unreachable by any pull,
+                      # pure garbage (the orphan each master repoint leaves).
+                      local candidates
+                      candidates="$(printf '%s' "$merged" | jq --argjson keep "$keep" '
+                          . as $all
+                          | [ $all[] | select((.metadata.container.tags // [])
+                                | any(.[]; test("^sha-[0-9a-f]{7}$"))) ] as $sha
+                          | ($sha | sort_by(.created_at) | reverse | .[$keep:]
+                               | map(select(((.metadata.container.tags // []) | index("master") | not) and
+                                            ((.metadata.container.tags // []) | index("latest") | not))))
+                            + [ $all[] | select((.metadata.container.tags // [] | length) == 0) ]
+                      ')"
+
+                      # (4) Deletes are individually NON-FATAL: a failure warns
+                      # and the loop continues — hygiene must never block CD.
+                      local total sha_count untagged_count
+                      total="$(printf '%s' "$candidates" | jq 'length')"
+                      if [ "$total" -eq 0 ]; then
+                          echo "$pkg: nothing to prune"
+                          return 0
+                      fi
+                      sha_count="$(printf '%s' "$candidates" | jq '[ .[] | select((.metadata.container.tags // []) | any(.[]; test("^sha-[0-9a-f]{7}$"))) ] | length')"
+                      untagged_count=$((total - sha_count))
+                      echo "$pkg: pruning $total version(s) — $sha_count sha-tagged beyond the newest $keep, $untagged_count untagged orphan(s)"
+                      local id tags
+                      while read -r id tags; do
+                          curl -fsS --max-time 30 -X DELETE \
+                              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                              -H 'Accept: application/vnd.github+json' \
+                              "$api/user/packages/container/$encoded/versions/$id" \
+                              || echo "warn: failed to delete $pkg version $id — continuing" >&2
+                          echo "pruned $pkg version $id (tags: $tags)"
+                      done < <(printf '%s' "$candidates" | jq -r '.[] | "\(.id) \((.metadata.container.tags // []) | join(","))"')
+                  }
+
+                  # The /user/* package endpoints address GHCR containers by
+                  # their BARE name (ghcr.io/mayank-uk/express-guide-server
+                  # is package "express-guide-server" — verified live; the
+                  # namespaced form 404s). The encode above is a no-op here,
+                  # kept defensive for any future name carrying a '/'.
+                  prune_package 'express-guide-server'
+                  prune_package 'express-guide-client'

@@ -244,7 +244,7 @@ CMD ["npm", "run", "dev"]`,
             'Verbatim — the whole prod file (.docker/server/Dockerfile.prod): three stages — build (full npm ci for tsc), prod-deps (npm ci --omit=dev), runtime (node + artifacts, NO compilers). Abridged below it: the .dockerignore and the compose shadow-mount trick',
           source: '.docker/server/Dockerfile.prod',
           code: `# ---- build stage: compile TypeScript (dev deps never leave this stage) ----
-FROM node:22-alpine AS build
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY server/package*.json ./
@@ -258,7 +258,7 @@ FROM node:22-alpine AS prod-deps
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY server/package*.json ./
-RUN npm ci --omit=dev
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 # ---- runtime stage: node + built artifacts, NO compilers in the image ----
 FROM node:22-alpine
