@@ -54,6 +54,9 @@
 - ⏳ Confirm the Dependabot-config deletion reached origin/master (was staged-NOT-pushed 2026-10-21; until pushed Dependabot may open more PRs — PR #1 node-26-alpine reported, not merged;
   developer to disable "Dependabot security updates" in GH Settings, keep alerts on).
 - ⏳ User action (README runbook): branch protection on master — required checks server/client/secrets/e2e, branches up to date, include admins.
+- ✅ (2026-10-25) Beacon data-distinct-id: stable per-browser visitor id for Umami IP-churn dedupe — localStorage 'mcw_vid' (crypto.randomUUID + fallback; ALL storage access guarded,
+  beacon still fires id-less on storage failure; attribute set BEFORE append → tracker auto-identifies at execution; no manual umami.identify, VITE_UMAMI_* gating untouched).
+  Verify: devcontainer client build + dist bundle grep (mcw_vid + data-distinct-id in client/dist), client vitest 378/378; runtime identify check pending post-deploy.
 
 # Developer defined section
 

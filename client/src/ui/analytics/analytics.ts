@@ -107,6 +107,39 @@ function analyticsConfig(): { readonly src: string; readonly id: string } | null
   return { src, id };
 }
 
+/** localStorage key for the per-browser visitor identity (see getDistinctId). */
+const VISITOR_ID_STORAGE_KEY = 'mcw_vid';
+
+/**
+ * Stable per-browser visitor id, generated on first read and persisted in
+ * localStorage. Rendered as the beacon's data-distinct-id attribute, which
+ * the Umami tracker picks up when the script evaluates (auto-identify) —
+ * this stitches one visitor back together across IP churn instead of
+ * leaving that to Umami's IP+UA fingerprint.
+ */
+function getDistinctId(): string | undefined {
+  // localStorage throws in privacy modes / sandboxed frames / blocked
+  // storage — the beacon must still work, just without a stable id.
+  try {
+    const existing = localStorage.getItem(VISITOR_ID_STORAGE_KEY);
+    if (existing) {
+      return existing;
+    }
+    const id =
+      typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : 'v-' +
+          Date.now() +
+          '-' +
+          Math.random().toString(36).slice(2) +
+          Math.random().toString(36).slice(2);
+    localStorage.setItem(VISITOR_ID_STORAGE_KEY, id);
+    return id;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Inject the Umami beacon into <head> — once per document, only when BOTH
  * env vars are set. Called from the app shell's mount effect
@@ -126,6 +159,12 @@ export function initAnalytics(): void {
   script.defer = true;
   script.src = config.src;
   script.setAttribute('data-website-id', config.id);
+  // Must be set BEFORE append: the tracker reads data-distinct-id off the
+  // tag as it executes and fires its identify call then and there.
+  const vid = getDistinctId();
+  if (vid) {
+    script.setAttribute('data-distinct-id', vid);
+  }
   document.head.appendChild(script);
   // Async beacon: load → flush what queued during the cold-start window;
   // error (blocked/failed request) → drop the queue, never replay it.
