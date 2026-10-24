@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { useParams } from 'react-router';
 import { SectionWrapper } from '../../components/section-wrapper';
 import { TextBlock } from '../../components/text-block';
 import { CodeBlock } from '../../components/code-block';
 import { ErrorPanel } from '../../components/error-panel';
 import { DemoHost } from '../../demos/demo_registry';
+import { trackEvent } from '../../analytics/analytics';
 import type { ContentBlock } from '../../../domain/models/topic';
 import { useHeaderTitle } from '../../hooks/use-header-title';
 import { useTopic } from './topic_view.hooks';
@@ -17,10 +19,21 @@ import { useTopic } from './topic_view.hooks';
 export function TopicView() {
   const { topicId } = useParams<'topicId'>();
   const view = useTopic(topicId);
+  const loadedTopic = view.state === 'ready' ? view.topic : undefined;
 
   // The header follows the served topic title once loaded; the route handle's
   // "Topic" covers loading, unknown, and failed topics.
-  useHeaderTitle(view.state === 'ready' ? view.topic.title : undefined);
+  useHeaderTitle(loadedTopic?.title);
+
+  // Self-hosted analytics: report each topic once when it finishes loading —
+  // home-card clicks, direct links, and refreshes all count (a no-op unless
+  // the build baked both VITE_UMAMI_* vars in). The hook stores the fetched
+  // topic once per load, so the effect fires exactly once per opened topic.
+  useEffect(() => {
+    if (loadedTopic !== undefined) {
+      trackEvent('topic-open', { topic: loadedTopic.id });
+    }
+  }, [loadedTopic]);
 
   if (view.state === 'loading') {
     return (

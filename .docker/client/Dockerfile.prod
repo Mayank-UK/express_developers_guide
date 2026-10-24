@@ -6,6 +6,17 @@
 # no architecture in them: compile where it is fast, resolve the target
 # architecture only in the final FROM below.
 FROM --platform=$BUILDPLATFORM node:22-alpine AS build
+
+# Umami analytics (PUBLIC values — the beacon URL + website id are visible in
+# the served page source anyway, so these ride repository variables, never
+# secrets). Vite bakes import.meta.env at BUILD time, so they must be ENV
+# before `npm run build`. Empty defaults (= unset) keep analytics a complete
+# no-op: no script tag injected, trackEvent sends nothing.
+ARG VITE_UMAMI_SRC=""
+ARG VITE_UMAMI_ID=""
+ENV VITE_UMAMI_SRC=$VITE_UMAMI_SRC
+ENV VITE_UMAMI_ID=$VITE_UMAMI_ID
+
 WORKDIR /app
 COPY client/package*.json ./
 RUN npm ci

@@ -52,6 +52,27 @@ Deploys are **zero-downtime blue/green**: the platform stack (project `edg_platf
 
 > Host-native dev (`npm install` in `server/` and `client/` with a local Node 22) is still possible, but the project's standard environment is the devcontainer — the repo intentionally carries no host `node_modules`.
 
+## Analytics
+
+The site reports to a **self-hosted Umami** instance at https://umami.mayankcodeworks.com — no third-party tracker, no cookies banner needed. The beacon is env-gated: CI bakes the `VITE_UMAMI_SRC` / `VITE_UMAMI_ID` **repository Variables** (not secrets — both values are public by design, visible in the served page source anyway) into the client image as Docker build-args (see `client/src/ui/analytics/analytics.ts`). With either variable empty — the default, and always in dev/test — analytics is a complete no-op: no script is injected and nothing is sent.
+
+Custom events:
+
+| Event | Property | Trigger |
+| ----- | -------- | ------- |
+| `topic-open` | `topic` — the served topic id (e.g. `authentication`) | a topic screen finishes loading (home-card click, direct link, or refresh) |
+| `copy-code` | `topic` — the current route path (e.g. `/topics/authentication`) | a code block's copy button succeeds |
+
+(`demo-run` {demo} is defined in the analytics module but not wired: demos mount inline beside their teaching sections, so there is no single user-triggered "run" action to report.)
+
+**UTM convention for share links** — tag any link you post with `utm_source` = where the link lives and `utm_medium` = `readme` \| `post` \| `social`; Umami parses the standard UTM parameters automatically:
+
+```text
+https://expressdevelopersguide.mayankcodeworks.com/?utm_source=github&utm_medium=readme
+https://expressdevelopersguide.mayankcodeworks.com/?utm_source=reddit&utm_medium=post
+https://expressdevelopersguide.mayankcodeworks.com/?utm_source=dev.to&utm_medium=post
+```
+
 ## Commands
 
 Inside the devcontainer (or, less commonly, in `server/` and `client/` with a local toolchain): `npm run dev` · `npm test` · `npm run build`.

@@ -18,6 +18,9 @@ e2e/playwright-report/
 !server/.env.development
 !server/.env.staging
 !server/.env.production.example
+# Client build-env template (Vite Umami vars — placeholders only, public by
+# design; see client/src/ui/analytics/analytics.ts).
+!client/.env.example
 # Compose auto-loads this (project dir = first -f file's dir) so the CI
 # override flow runs bare: compose interpolates each file BEFORE merging, so
 # the :ci image override alone cannot silence ${IMAGE_TAG:?} in the prod

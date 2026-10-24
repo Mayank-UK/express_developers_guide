@@ -4,6 +4,7 @@ import { ThemeToggle } from './theme-toggle';
 import { useRouteTitle } from '../hooks/use-route-title';
 import { HeaderTitleContext } from '../hooks/use-header-title';
 import { routePaths } from '../routing/routes';
+import { initAnalytics } from '../analytics/analytics';
 
 /**
  * RootLayout — the single shared app shell: a header (back arrow + current
@@ -34,6 +35,14 @@ export function RootLayout() {
   const [titleOverride, setTitleOverride] = useState<string | undefined>(undefined);
   const title = titleOverride ?? routeTitle;
   const titleContext = useMemo(() => ({ setTitle: setTitleOverride }), []);
+
+  // Self-hosted analytics beacon (Umami — see ui/analytics/analytics.ts):
+  // shell-level so it loads once per document for EVERY route. A no-op
+  // unless the build baked both VITE_UMAMI_* vars in; the loader's
+  // idempotence guard absorbs StrictMode's dev double-mount.
+  useEffect(() => {
+    initAnalytics();
+  }, []);
 
   // Show the back arrow everywhere except home (so About, reached from the
   // header, always has a way back to where the user came from).

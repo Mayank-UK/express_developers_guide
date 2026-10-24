@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { trackEvent } from '../analytics/analytics';
 
 interface CodeBlockProps {
   code: string;
@@ -35,6 +36,11 @@ export function CodeBlock({ code, language, caption, defaultOpen = false }: Code
   const handleCopy = async (event: React.MouseEvent) => {
     event.stopPropagation();
     if (!(await copyToClipboard(code))) return;
+    // Self-hosted analytics: CodeBlock has no topic prop (it renders served
+    // content), so the current route path is the stable stand-in —
+    // "/topics/<id>" on topic screens (a no-op unless the build baked both
+    // VITE_UMAMI_* vars in).
+    trackEvent('copy-code', { topic: window.location.pathname });
     setCopied(true);
     if (resetTimer.current !== undefined) window.clearTimeout(resetTimer.current);
     resetTimer.current = window.setTimeout(() => setCopied(false), 1500);
