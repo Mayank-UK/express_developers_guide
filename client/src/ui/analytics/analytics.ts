@@ -15,6 +15,13 @@
  * single conditional at the call sites. Both values are PUBLIC (visible in
  * the served page source anyway), so they ride repository variables, never
  * secrets.
+ *
+ * The beacon script is async (defer + runtime-inserted): events emitted in
+ * the window between injection and evaluation — exactly a cold deep link's
+ * mount-time `topic-open` — find `window.umami` still undefined. Those
+ * events are QUEUED in order and flushed by the script's load event (or by
+ * the next trackEvent once the global exists); a failed/blocked load drops
+ * the queue so nothing leaks or replays stale.
  */
 
 /** Marks the injected beacon so initAnalytics stays idempotent per
@@ -60,6 +67,29 @@ type EventData<N extends AnalyticsEvent['name']> = Omit<
 >;
 
 /**
+ * Events captured before the beacon finished evaluating, in emission
+ * order. Drained by the script's load event or by the first trackEvent
+ * that sees the global — without this, mount-time events on cold deep
+ * links would race the async script and silently drop.
+ */
+const pendingEvents: Array<[AnalyticsEvent['name'], Record<string, unknown>]> = [];
+
+/**
+ * Drain the queue in order through the beacon. The queue is cleared
+ * BEFORE sending so a re-entrant flush (a track call that itself fires
+ * trackEvent) can never double-send an entry.
+ */
+function flushPendingEvents(): void {
+  if (pendingEvents.length === 0) {
+    return;
+  }
+  const queued = pendingEvents.splice(0, pendingEvents.length);
+  for (const [name, data] of queued) {
+    window.umami?.track(name, data);
+  }
+}
+
+/**
  * The env is read at CALL time, not module load, so vitest's vi.stubEnv
  * can drive specs (and a stale answer is never cached). An empty string
  * counts as unset — the Dockerfile's empty ARG defaults must disable
@@ -97,6 +127,12 @@ export function initAnalytics(): void {
   script.src = config.src;
   script.setAttribute('data-website-id', config.id);
   document.head.appendChild(script);
+  // Async beacon: load → flush what queued during the cold-start window;
+  // error (blocked/failed request) → drop the queue, never replay it.
+  script.addEventListener('load', flushPendingEvents);
+  script.addEventListener('error', () => {
+    pendingEvents.length = 0;
+  });
 }
 
 export function trackEvent(name: 'topic-open', data: EventData<'topic-open'>): void;
@@ -104,9 +140,11 @@ export function trackEvent(name: 'copy-code', data: EventData<'copy-code'>): voi
 export function trackEvent(name: 'demo-run', data: EventData<'demo-run'>): void;
 /**
  * Typed wrapper over `window.umami.track(name, data)` — a no-op when
- * analytics is unconfigured (dev/test default) or when the beacon has not
- * loaded yet (`window.umami` undefined: jsdom, pre-load frames, blocked
- * requests). Never throws.
+ * analytics is unconfigured (dev/test default). When the beacon has not
+ * evaluated yet (`window.umami` undefined: jsdom, the cold-start frames
+ * after injection, blocked requests) the event is QUEUED and flushed in
+ * order once the script loads — a failed script drops the queue. Never
+ * throws.
  */
 export function trackEvent(
   name: AnalyticsEvent['name'],
@@ -115,5 +153,12 @@ export function trackEvent(
   if (analyticsConfig() === null) {
     return;
   }
-  window.umami?.track(name, data);
+  if (typeof window.umami?.track !== 'function') {
+    pendingEvents.push([name, data]);
+    return;
+  }
+  // Flush-first so earlier queued events keep their chronological place
+  // ahead of this one.
+  flushPendingEvents();
+  window.umami.track(name, data);
 }
