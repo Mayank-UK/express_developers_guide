@@ -135,6 +135,24 @@ export function initAnalytics(): void {
   });
 }
 
+/** topic-open is once-per-topic-per-window by contract: a remount or refetch
+ * must not double-count a single visit (proven live on a sibling guide: a
+ * pathname-keyed effect re-ran on layout remount and fired twice 8s apart).
+ * Rapid genuine re-opens inside the window are intentionally collapsed into
+ * one event. */
+const TOPIC_OPEN_DEDUPE_WINDOW_MS = 30_000;
+const lastTopicOpenAt = new Map<string, number>();
+
+function isDuplicateTopicOpen(topic: string): boolean {
+  const now = Date.now();
+  const at = lastTopicOpenAt.get(topic);
+  if (at !== undefined && now - at < TOPIC_OPEN_DEDUPE_WINDOW_MS) {
+    return true;
+  }
+  lastTopicOpenAt.set(topic, now);
+  return false;
+}
+
 export function trackEvent(name: 'topic-open', data: EventData<'topic-open'>): void;
 export function trackEvent(name: 'copy-code', data: EventData<'copy-code'>): void;
 export function trackEvent(name: 'demo-run', data: EventData<'demo-run'>): void;
@@ -151,6 +169,9 @@ export function trackEvent(
   data: Record<string, unknown>,
 ): void {
   if (analyticsConfig() === null) {
+    return;
+  }
+  if (name === 'topic-open' && isDuplicateTopicOpen(String(data.topic))) {
     return;
   }
   if (typeof window.umami?.track !== 'function') {

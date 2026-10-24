@@ -84,9 +84,11 @@ describe('analytics', () => {
       vi.stubEnv('VITE_UMAMI_ID', ID);
       initAnalytics();
 
-      // Two events queue during the cold window…
-      trackEvent('topic-open', { topic: 'authentication' });
-      trackEvent('copy-code', { topic: '/topics/authentication' });
+      // Two events queue during the cold window… (topic unique to this
+      // test: the topic-open dedupe guard is module-level state and would
+      // otherwise swallow a topic another test already fired.)
+      trackEvent('topic-open', { topic: 'middleware' });
+      trackEvent('copy-code', { topic: '/topics/middleware' });
 
       // …then the beacon evaluates (jsdom never runs it, so simulate
       // its load event) and its global exists.
@@ -94,9 +96,9 @@ describe('analytics', () => {
       injectedScript().dispatchEvent(new Event('load'));
 
       expect(track).toHaveBeenCalledTimes(2);
-      expect(track).toHaveBeenNthCalledWith(1, 'topic-open', { topic: 'authentication' });
+      expect(track).toHaveBeenNthCalledWith(1, 'topic-open', { topic: 'middleware' });
       expect(track).toHaveBeenNthCalledWith(2, 'copy-code', {
-        topic: '/topics/authentication',
+        topic: '/topics/middleware',
       });
     });
 
@@ -144,15 +146,70 @@ describe('analytics', () => {
       const track = installUmami();
 
       // One call per union member — also proves each payload shape
-      // compiles against its overload (no dynamic strings).
-      trackEvent('topic-open', { topic: 'authentication' });
-      trackEvent('copy-code', { topic: '/topics/authentication' });
+      // compiles against its overload (no dynamic strings). Topic unique
+      // to this test (dedupe guard is module-level state).
+      trackEvent('topic-open', { topic: 'routing' });
+      trackEvent('copy-code', { topic: '/topics/routing' });
       trackEvent('demo-run', { demo: 'auth:jwt' });
 
       expect(track).toHaveBeenCalledTimes(3);
-      expect(track).toHaveBeenNthCalledWith(1, 'topic-open', { topic: 'authentication' });
-      expect(track).toHaveBeenNthCalledWith(2, 'copy-code', { topic: '/topics/authentication' });
+      expect(track).toHaveBeenNthCalledWith(1, 'topic-open', { topic: 'routing' });
+      expect(track).toHaveBeenNthCalledWith(2, 'copy-code', { topic: '/topics/routing' });
       expect(track).toHaveBeenNthCalledWith(3, 'demo-run', { demo: 'auth:jwt' });
+    });
+  });
+
+  describe('topic-open dedupe (view-remount double-fire guard)', () => {
+    it('collapses a second topic-open for the same topic within the window', () => {
+      vi.stubEnv('VITE_UMAMI_SRC', SRC);
+      vi.stubEnv('VITE_UMAMI_ID', ID);
+      const track = installUmami();
+
+      trackEvent('topic-open', { topic: 'observability' });
+      // The remount case: same topic re-fired seconds later.
+      trackEvent('topic-open', { topic: 'observability' });
+
+      expect(track).toHaveBeenCalledTimes(1);
+      expect(track).toHaveBeenNthCalledWith(1, 'topic-open', { topic: 'observability' });
+    });
+
+    it('sends again for the same topic once the window has passed', () => {
+      vi.stubEnv('VITE_UMAMI_SRC', SRC);
+      vi.stubEnv('VITE_UMAMI_ID', ID);
+      const track = installUmami();
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-24T12:00:00Z'));
+      trackEvent('topic-open', { topic: 'best-practices' });
+      vi.setSystemTime(new Date('2026-10-24T12:00:31Z'));
+      trackEvent('topic-open', { topic: 'best-practices' });
+      vi.useRealTimers();
+
+      expect(track).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not suppress different topics in the same window', () => {
+      vi.stubEnv('VITE_UMAMI_SRC', SRC);
+      vi.stubEnv('VITE_UMAMI_ID', ID);
+      const track = installUmami();
+
+      trackEvent('topic-open', { topic: 'performance' });
+      trackEvent('topic-open', { topic: 'api-design' });
+
+      expect(track).toHaveBeenCalledTimes(2);
+    });
+
+    it('never suppresses repeated copy-code or demo-run (guard is topic-open only)', () => {
+      vi.stubEnv('VITE_UMAMI_SRC', SRC);
+      vi.stubEnv('VITE_UMAMI_ID', ID);
+      const track = installUmami();
+
+      trackEvent('copy-code', { topic: '/topics/messaging' });
+      trackEvent('copy-code', { topic: '/topics/messaging' });
+      trackEvent('demo-run', { demo: 'db:sql-lab' });
+      trackEvent('demo-run', { demo: 'db:sql-lab' });
+
+      expect(track).toHaveBeenCalledTimes(4);
     });
   });
 });
