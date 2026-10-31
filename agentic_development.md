@@ -51,6 +51,7 @@
   a runtime DOM query (script[data-website-id] + window.umami) against a served build proves it; static HTML/asset greps are false negatives.
 
 ## Active tasks
+- Prometheus exporter ✅ 2026-10-31 (commit 69a95b2, PUSHED — CI/CD deploying): GET /metrics at ROOT (repo's /docs root-mount precedent for non-API tooling; NOT /api/metrics). core/metrics/prometheus_metrics.ts = prom-client ^15.1.3 Registry + collectDefaultMetrics + http_request_duration_seconds histogram; prometheus_middleware.ts uses request-logger's finish/close settle discipline (first-of-two guard). CARDINALITY RULE (repo-reusable): label by ROUTE PATTERN (req.baseUrl + req.route.path at settle), single `unmatched` bucket — never raw path (404 catch-all would mint a series per URL). Tests: 859 passed (76 files) + build + coverage gate green (88.8/79.7/90/89.9 vs 86/77/87/87). VM: infra scrapes via metrics-shim, path /metrics (see infra repo — monitoring_scraped_apps).
 - ⏳ Confirm the Dependabot-config deletion reached origin/master (was staged-NOT-pushed 2026-10-21; until pushed Dependabot may open more PRs — PR #1 node-26-alpine reported, not merged;
   developer to disable "Dependabot security updates" in GH Settings, keep alerts on).
 - ⏳ User action (README runbook): branch protection on master — required checks server/client/secrets/e2e, branches up to date, include admins.
