@@ -4,9 +4,11 @@ import { apiRouter } from './presentation/routes/index.js';
 import { docsRouter } from './presentation/routes/docs_routes.js';
 import { webhookJsonBodyParser } from './presentation/routes/webhooks_demo_routes.js';
 import { errorHandler } from './presentation/middleware/error_middleware.js';
+import { prometheusMiddleware } from './presentation/middleware/prometheus_middleware.js';
 import { requestIdMiddleware } from './presentation/middleware/request_id_middleware.js';
 import { requestLoggerMiddleware } from './presentation/middleware/request_logger_middleware.js';
 import { traceMiddleware } from './presentation/middleware/trace_middleware.js';
+import { metricsRouter } from './presentation/routes/metrics_routes.js';
 
 /**
  * Builds the Express app without binding a port, so Supertest can exercise it
@@ -39,6 +41,12 @@ export function createApp(): Express {
   // touch) and before the request logger + routes.
   app.use(traceMiddleware);
   app.use(requestLoggerMiddleware);
+  // Prometheus observer, mounted straight after the request logger (its
+  // settle-discipline twin): every settled request — including 404s from the
+  // catch-all and the /metrics scrape itself — becomes one
+  // http_request_duration_seconds observation in the registry GET /metrics
+  // serves (core/metrics/prometheus_metrics.ts).
+  app.use(prometheusMiddleware);
 
   // SECURITY HEADERS, for real: helmet on every response, before any route
   // can answer. The CSP below is written out EXPLICITLY (pinned, commented)
@@ -82,6 +90,12 @@ export function createApp(): Express {
 
   // API surface.
   app.use('/api', apiRouter);
+
+  // Prometheus scrape surface (GET /metrics). Mounted on the ROOT app,
+  // deliberately NOT under /api — /metrics is the scraper convention
+  // (Prometheus defaults to it), the same tooling-beside-API split as /docs
+  // below. See metrics_routes.ts.
+  app.use(metricsRouter);
 
   // Documentation surface (Swagger UI at /docs + raw spec at
   // /docs/openapi.json). Mounted on the ROOT app, deliberately NOT under
