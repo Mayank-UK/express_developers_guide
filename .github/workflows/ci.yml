@@ -108,13 +108,16 @@ jobs:
                   tags: ghcr.io/mayank-uk/express-guide-client:ci
                   cache-from: type=gha,scope=client
                   cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=client' || '' }}
-                  # Umami analytics (repository VARIABLES, not secrets — the
-                  # values are public in the served page source anyway).
-                  # Empty fallbacks keep the image analytics-free until the
-                  # vars exist; the smoke gate then tests exactly what ships.
+                  # Umami analytics + Faro crash telemetry (repository
+                  # VARIABLES, not secrets — the values are public in the
+                  # served page source anyway). Empty fallbacks keep the
+                  # image beacon-free until the vars exist; the smoke gate
+                  # then tests exactly what ships.
                   build-args: |
                       VITE_UMAMI_SRC=${{ vars.VITE_UMAMI_SRC || secrets.VITE_UMAMI_SRC || '' }}
                       VITE_UMAMI_ID=${{ vars.VITE_UMAMI_ID || secrets.VITE_UMAMI_ID || '' }}
+                      VITE_FARO_URL=${{ vars.VITE_FARO_URL || secrets.VITE_FARO_URL || '' }}
+                      VITE_FARO_APP=${{ vars.VITE_FARO_APP || secrets.VITE_FARO_APP || '' }}
 
             - name: Prepare external compose resources and the env file
               run: |
@@ -303,14 +306,16 @@ jobs:
                       ${{ matrix.image }}:master
                   cache-from: type=gha,scope=${{ matrix.service }}
                   cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-                  # Same public Umami vars as the e2e smoke build (vars, not
-                  # secrets — empty fallback until they are configured). The
-                  # matrix also builds the SERVER image, whose Dockerfile
+                  # Same public Umami/Faro vars as the e2e smoke build (vars,
+                  # not secrets — empty fallback until they are configured).
+                  # The matrix also builds the SERVER image, whose Dockerfile
                   # declares no matching ARG — the extra build-args are
                   # simply ignored there.
                   build-args: |
                       VITE_UMAMI_SRC=${{ vars.VITE_UMAMI_SRC || secrets.VITE_UMAMI_SRC || '' }}
                       VITE_UMAMI_ID=${{ vars.VITE_UMAMI_ID || secrets.VITE_UMAMI_ID || '' }}
+                      VITE_FARO_URL=${{ vars.VITE_FARO_URL || secrets.VITE_FARO_URL || '' }}
+                      VITE_FARO_APP=${{ vars.VITE_FARO_APP || secrets.VITE_FARO_APP || '' }}
 
     # GHCR tag retention: every master push leaves one sha-<7> version per
     # package. This job deletes sha-tagged versions beyond the newest 10 —

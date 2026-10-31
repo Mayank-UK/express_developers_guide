@@ -17,6 +17,15 @@ ARG VITE_UMAMI_ID=""
 ENV VITE_UMAMI_SRC=$VITE_UMAMI_SRC
 ENV VITE_UMAMI_ID=$VITE_UMAMI_ID
 
+# Grafana Faro crash telemetry (same PUBLIC-values ride as Umami above:
+# repository variables, never secrets — the collector URL + app name ship
+# in the served bundle anyway). Same empty-default discipline: no beacon
+# script, no initialization, until both vars are supplied.
+ARG VITE_FARO_URL=""
+ARG VITE_FARO_APP=""
+ENV VITE_FARO_URL=$VITE_FARO_URL
+ENV VITE_FARO_APP=$VITE_FARO_APP
+
 WORKDIR /app
 COPY client/package*.json ./
 RUN npm ci

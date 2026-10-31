@@ -5,6 +5,7 @@ import { useRouteTitle } from '../hooks/use-route-title';
 import { HeaderTitleContext } from '../hooks/use-header-title';
 import { routePaths } from '../routing/routes';
 import { initAnalytics } from '../analytics/analytics';
+import { initCrashTelemetry } from '../analytics/crash-telemetry';
 
 /**
  * RootLayout — the single shared app shell: a header (back arrow + current
@@ -36,12 +37,14 @@ export function RootLayout() {
   const title = titleOverride ?? routeTitle;
   const titleContext = useMemo(() => ({ setTitle: setTitleOverride }), []);
 
-  // Self-hosted analytics beacon (Umami — see ui/analytics/analytics.ts):
-  // shell-level so it loads once per document for EVERY route. A no-op
-  // unless the build baked both VITE_UMAMI_* vars in; the loader's
-  // idempotence guard absorbs StrictMode's dev double-mount.
+  // Self-hosted analytics beacon (Umami — see ui/analytics/analytics.ts)
+  // and the Faro crash-telemetry beacon (see ui/analytics/crash-telemetry.ts):
+  // shell-level so they load once per document for EVERY route. A no-op
+  // unless the build baked both VITE_UMAMI_* / VITE_FARO_* vars in; the
+  // loaders' idempotence guards absorb StrictMode's dev double-mount.
   useEffect(() => {
     initAnalytics();
+    initCrashTelemetry();
   }, []);
 
   // Show the back arrow everywhere except home (so About, reached from the
